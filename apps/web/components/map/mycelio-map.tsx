@@ -2,13 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Renommé : `Map` entrerait en collision avec le Map natif de JavaScript, utilisé plus bas.
-import MapGL, { Layer, Source, type MapRef, type MapLayerMouseEvent } from "react-map-gl/maplibre";
+import MapGL, {
+  GeolocateControl,
+  Layer,
+  NavigationControl,
+  ScaleControl,
+  Source,
+  type MapLayerMouseEvent,
+  type MapRef,
+} from "react-map-gl/maplibre";
 import type { LngLatBounds } from "maplibre-gl";
 import { cellToLatLng } from "h3-js";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
-import { computePercentiles, toGeoJSON, type Cell } from "@/lib/map/hexagons";
+import { toGeoJSON, type Cell } from "@/lib/map/hexagons";
 import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
 
@@ -17,6 +25,9 @@ type Props = {
   zoom: number;
   opacityRange: [number, number];
 };
+
+/** Rampe séquentielle du beige pâle à l'ocre profond. */
+const RAMP = ["#E8DCC0", "#D9BE7E", "#C89B3C", "#A87A28", "#8A5A16"];
 
 export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const mapRef = useRef<MapRef>(null);
@@ -44,19 +55,25 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     };
   }, []);
 
-  // Les centres ne dépendent que de l'index H3 : on les calcule une fois, pas à chaque
-  // déplacement de la carte.
+  /**
+   * Le GeoJSON est construit UNE SEULE FOIS, à l'arrivée des données.
+   *
+   * Le reconstruire à chaque déplacement — ce que faisait la première version pour recalculer
+   * les percentiles — obligeait MapLibre à réanalyser 13 000 polygones et à les renvoyer au GPU
+   * à chaque relâchement de la souris. Le fil principal gelait assez longtemps pour que la carte
+   * paraisse tout simplement bloquée.
+   */
+  const geojson = useMemo(() => toGeoJSON(cells), [cells]);
+
   const centers = useMemo(() => {
-    const map = new Map<string, [number, number]>();
+    const byIndex = new Map<string, [number, number]>();
     for (const cell of cells) {
       const [lat, lng] = cellToLatLng(cell.h);
-      map.set(cell.h, [lng, lat]);
+      byIndex.set(cell.h, [lng, lat]);
     }
-    return map;
+    return byIndex;
   }, [cells]);
 
-  // Le classement se refait à chaque déplacement : c'est tout l'intérêt du percentile sur la
-  // fenêtre visible plutôt que sur la valeur absolue.
   const visible = useMemo(() => {
     if (!bounds) return cells;
     return cells.filter((cell) => {
@@ -65,10 +82,32 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     });
   }, [cells, bounds, centers]);
 
-  const geojson = useMemo(
-    () => toGeoJSON(cells, computePercentiles(visible)),
-    [cells, visible],
-  );
+  /**
+   * Seuils de couleur, recalculés sur la fenêtre visible à chaque déplacement.
+   *
+   * Le classement reste relatif — exigence du cahier des charges, sans quoi une saison sèche
+   * rendrait toute la carte uniformément pâle — mais il ne passe plus par les données : seules
+   * les bornes de l'expression de couleur changent, ce qui ne coûte rien.
+   */
+  const stops = useMemo(() => {
+    const values = visible
+      .map((c) => c.f)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b);
+    if (values.length === 0) return null;
+
+    const out: number[] = [];
+    let previous = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < RAMP.length; i++) {
+      const at = Math.round((i / (RAMP.length - 1)) * (values.length - 1));
+      // MapLibre exige des bornes strictement croissantes : quand une fenêtre est très
+      // homogène, plusieurs quantiles tombent sur la même valeur.
+      const value = Math.max(values[at] ?? 0, previous + 1e-6);
+      out.push(value);
+      previous = value;
+    }
+    return out;
+  }, [visible]);
 
   const style = useMemo(() => buildStyle(basemap), [basemap]);
 
@@ -83,8 +122,23 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   }, []);
 
   const selectedCell = cells.find((c) => c.h === selected) ?? null;
-
   const [minOpacity, maxOpacity] = opacityRange;
+
+  const colorExpression = stops
+    ? ["interpolate", ["linear"], ["get", "value"], ...stops.flatMap((s, i) => [s, RAMP[i]])]
+    : RAMP[2];
+
+  const opacityExpression = stops
+    ? [
+        "interpolate",
+        ["linear"],
+        ["get", "value"],
+        stops[0],
+        minOpacity,
+        stops[stops.length - 1],
+        maxOpacity,
+      ]
+    : minOpacity;
 
   return (
     <div className="fixed inset-0 lg:left-16">
@@ -96,37 +150,34 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         onMoveEnd={onMove}
         onClick={onClick}
         interactiveLayerIds={["mailles"]}
+        cursor="grab"
         attributionControl={{ compact: true }}
         style={{ width: "100%", height: "100%" }}
       >
+        {/* En haut à droite : hors d'atteinte du pouce, mais c'est la convention, et ces
+            commandes sont secondaires face au geste direct. */}
+        <NavigationControl position="top-right" showCompass={false} />
+        <GeolocateControl
+          position="top-right"
+          // Suit la position pendant la marche, sans re-centrer de force à chaque relevé :
+          // sinon impossible de regarder la maille d'à côté tout en avançant.
+          trackUserLocation
+          showUserLocation
+          positionOptions={{ enableHighAccuracy: true }}
+          fitBoundsOptions={{ maxZoom: 14 }}
+        />
+        <ScaleControl position="bottom-left" unit="metric" maxWidth={120} />
+
         <Source id="cells" type="geojson" data={geojson}>
           <Layer
             id="mailles"
             type="fill"
             paint={{
-              // Rampe séquentielle du beige pâle à l'ocre profond, pilotée par le RANG et non
-              // par la valeur brute.
-              "fill-color": [
-                "interpolate",
-                ["linear"],
-                ["get", "percentile"],
-                0,
-                "#E8DCC0",
-                0.5,
-                "#C89B3C",
-                1,
-                "#8A5A16",
-              ],
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              "fill-color": colorExpression as any,
               // Jamais 1 : le relief et les chemins doivent rester lisibles dessous.
-              "fill-opacity": [
-                "interpolate",
-                ["linear"],
-                ["get", "percentile"],
-                0,
-                minOpacity,
-                1,
-                maxOpacity,
-              ],
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              "fill-opacity": opacityExpression as any,
             }}
           />
           <Layer
@@ -145,7 +196,6 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         </Source>
       </MapGL>
 
-
       <MapControls
         basemap={basemap}
         onBasemapChange={setBasemap}
@@ -153,8 +203,11 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         count={visible.length}
       />
 
-      <CellSheet cell={selectedCell} essences={essences} onClose={() => setSelected(null)} />
+      <CellSheet
+        cell={selectedCell}
+        essences={essences}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }
-
