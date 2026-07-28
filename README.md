@@ -21,7 +21,7 @@ d'application. La carte, le pipeline géospatial et le moteur de scoring viennen
 | 3 | Carte MapLibre, fonds IGN, hexagones | ✅ |
 | 4 | Scoring par règles, cron quotidien | ✅ |
 | 5 | Panneau d'inspection, conseils terrain | ✅ |
-| 6 | Carnet de sorties, export GPX | à faire |
+| 6 | Carnet de sorties, export GPX | ✅ |
 | 7 | LightGBM, validation spatiale | à faire |
 
 ## Démarrer

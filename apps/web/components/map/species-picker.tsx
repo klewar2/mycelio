@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 
 export type Species = {
+  id: number;
   slug: string;
   common_name_fr: string;
   scientific_name: string;

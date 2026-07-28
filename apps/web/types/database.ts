@@ -194,6 +194,54 @@ export type Database = {
         }
         Relationships: []
       }
+      finds: {
+        Row: {
+          created_at: string
+          id: string
+          location: unknown
+          maturity: string | null
+          outing_id: string
+          photo_path: string | null
+          quantity_g: number | null
+          species_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location?: unknown
+          maturity?: string | null
+          outing_id: string
+          photo_path?: string | null
+          quantity_g?: number | null
+          species_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location?: unknown
+          maturity?: string | null
+          outing_id?: string
+          photo_path?: string | null
+          quantity_g?: number | null
+          species_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finds_outing_id_fkey"
+            columns: ["outing_id"]
+            isOneToOne: false
+            referencedRelation: "outings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finds_species_id_fkey"
+            columns: ["species_id"]
+            isOneToOne: false
+            referencedRelation: "species"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       forecast: {
         Row: {
           confidence: number
@@ -262,6 +310,63 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      outings: {
+        Row: {
+          created_at: string
+          duration_min: number | null
+          found_nothing: boolean
+          h3_index: string | null
+          id: string
+          location: unknown
+          notes: string | null
+          occurred_on: string
+          user_id: string
+          visibility: string
+          weather_snapshot: Json | null
+        }
+        Insert: {
+          created_at?: string
+          duration_min?: number | null
+          found_nothing?: boolean
+          h3_index?: string | null
+          id?: string
+          location?: unknown
+          notes?: string | null
+          occurred_on?: string
+          user_id: string
+          visibility?: string
+          weather_snapshot?: Json | null
+        }
+        Update: {
+          created_at?: string
+          duration_min?: number | null
+          found_nothing?: boolean
+          h3_index?: string | null
+          id?: string
+          location?: unknown
+          notes?: string | null
+          occurred_on?: string
+          user_id?: string
+          visibility?: string
+          weather_snapshot?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outings_h3_index_fkey"
+            columns: ["h3_index"]
+            isOneToOne: false
+            referencedRelation: "cells"
+            referencedColumns: ["h3_index"]
+          },
+          {
+            foreignKeyName: "outings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       permissions: {
         Row: {

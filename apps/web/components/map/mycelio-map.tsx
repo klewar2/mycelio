@@ -22,6 +22,7 @@ import { toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
 import { SpeciesPicker, type Species } from "./species-picker";
 import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
+import { QuickOuting } from "./quick-outing";
 
 type Props = {
   center: [number, number];
@@ -45,6 +46,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [forecast, setForecast] = useState<Map<string, Forecast>>(new Map());
   const [day, setDay] = useState(0);
+  const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,6 +233,12 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
           fitBoundsOptions={{ maxZoom: 13 }}
           // Sans cela, un refus de permission ou une géolocalisation indisponible échouent en
           // silence : le bouton clignote et rien ne se passe, sans qu'on sache pourquoi.
+          onGeolocate={(event) =>
+            setPosition({
+              lat: event.coords.latitude,
+              lng: event.coords.longitude,
+            })
+          }
           onError={(error) => {
             const reason =
               error.code === 1
@@ -278,6 +286,12 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         day={day}
         onDayChange={setDay}
       />
+
+      {/* Dans le pouce, au-dessus du sélecteur d'espèce : c'est le geste qu'on fait en
+          rentrant de sortie, souvent d'une main. */}
+      <div className="pointer-events-none absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+13.5rem)] z-20 lg:bottom-24">
+        <QuickOuting species={species} h3={selected} position={position} />
+      </div>
 
       <MapControls
         basemap={basemap}

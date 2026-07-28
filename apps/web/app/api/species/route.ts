@@ -9,7 +9,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("species")
-    .select("slug, common_name_fr, scientific_name, notes_terrain")
+    .select("id, slug, common_name_fr, scientific_name, notes_terrain")
     .eq("is_enabled", true)
     .order("sort_order");
 
