@@ -339,6 +339,7 @@ export type Database = {
           alt_max_m: number | null
           alt_min_m: number | null
           common_name_fr: string
+          dangerous_confusions: string | null
           gbif_taxon_key: number | null
           host_codes: string[]
           id: number
@@ -362,6 +363,7 @@ export type Database = {
           alt_max_m?: number | null
           alt_min_m?: number | null
           common_name_fr: string
+          dangerous_confusions?: string | null
           gbif_taxon_key?: number | null
           host_codes?: string[]
           id?: number
@@ -385,6 +387,7 @@ export type Database = {
           alt_max_m?: number | null
           alt_min_m?: number | null
           common_name_fr?: string
+          dangerous_confusions?: string | null
           gbif_taxon_key?: number | null
           host_codes?: string[]
           id?: number

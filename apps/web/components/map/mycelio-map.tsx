@@ -38,7 +38,6 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const geolocateRef = useRef<React.ComponentRef<typeof GeolocateControl>>(null);
   const [basemap, setBasemap] = useState<BasemapId>("plan");
   const [cells, setCells] = useState<Cell[]>([]);
-  const [essences, setEssences] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [bounds, setBounds] = useState<LngLatBounds | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -54,7 +53,6 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
       .then((data) => {
         if (cancelled) return;
         setCells(data.cells ?? []);
-        setEssences(data.essences ?? []);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -187,7 +185,6 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     setSelected(feature ? (feature.properties?.h as string) : null);
   }, []);
 
-  const selectedCell = cells.find((c) => c.h === selected) ?? null;
   const [minOpacity, maxOpacity] = opacityRange;
 
   const colorExpression = stops
@@ -289,14 +286,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         count={visible.length}
       />
 
-      <CellSheet
-        cell={selectedCell}
-        forecast={selected ? (forecast.get(selected) ?? null) : null}
-        day={day}
-        speciesName={species.find((s) => s.slug === chosen)?.common_name_fr ?? null}
-        essences={essences}
-        onClose={() => setSelected(null)}
-      />
+      <CellSheet h3={selected} day={day} onClose={() => setSelected(null)} />
     </div>
   );
 }

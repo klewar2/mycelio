@@ -22,11 +22,17 @@ export function MapControls({
   count: number;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 lg:inset-x-auto lg:right-0 lg:bottom-0">
-      {/* Sur desktop, la marge basse dégage l'attribution IGN, que MapLibre place elle aussi en
-          bas à droite — sans quoi les deux se chevauchent. */}
-      <div className="pointer-events-auto mx-3 mb-[calc(env(safe-area-inset-bottom)+5.5rem)] flex flex-col gap-2 lg:mr-3 lg:mb-9 lg:items-end">
-        <div className="surface-float flex items-center gap-1 self-start p-1 lg:self-end">
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 lg:inset-x-auto lg:left-0">
+      {/* Sous le bandeau de sécurité, et non en bas : le bas est occupé par le sélecteur
+          d'espèce, le curseur de jour et la barre d'onglets. Les empiler les rendait
+          illisibles sur mobile.
+
+          La marge haute dégage le bandeau de sécurité replié, plus haut sur mobile parce que
+          le texte y tient sur quatre lignes. Déplier « Précautions » le recouvre
+          temporairement, ce qui est acceptable : on lit alors l'avertissement, on ne change
+          pas de fond de carte. */}
+      <div className="pointer-events-auto mx-3 mt-[calc(max(0.75rem,env(safe-area-inset-top))+10.5rem)] flex flex-col gap-2 lg:mt-24 lg:ml-3 lg:items-start">
+        <div className="surface-float flex items-center gap-1 self-start p-1 lg:self-start">
           <Layers className="text-muted-foreground mx-2 size-4" aria-hidden />
           {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => (
             <button
@@ -46,7 +52,7 @@ export function MapControls({
           ))}
         </div>
 
-        <div className="surface-float self-start px-3 py-2 lg:self-end">
+        <div className="surface-float self-start px-3 py-2 lg:self-start">
           <p data-numeric className="text-muted-foreground text-xs">
             {loading ? (
               <span className="flex items-center gap-2">
