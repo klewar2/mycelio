@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  database:
+    name: Base — migrations et tests RLS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Démarrer Supabase
+        run: pnpm exec supabase start
+
+      # Le critère de validation de la phase 1 se joue ici : un admin ne peut pas supprimer le
+      # dernier super_admin, et la RLS est active partout.
+      - name: Tests pgTAP
+        run: pnpm exec supabase test db
+
+      # Les types générés sont commités : ils doivent correspondre au schéma, sinon le typage de
+      # l'application ment sur l'état réel de la base.
+      - name: Dérive des types
+        run: |
+          pnpm exec supabase gen types typescript --local > /tmp/database.ts
+          diff /tmp/database.ts apps/web/types/database.ts
+
+  web:
+    name: Application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter web typecheck
+      - run: pnpm --filter web lint
+      - run: pnpm --filter web test
+      - run: pnpm --filter web build
+        env:
+          # Valeurs factices : le build ne contacte pas la base, il a seulement besoin que les
+          # variables existent.
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-placeholder
+          SUPABASE_SERVICE_ROLE_KEY: build-placeholder

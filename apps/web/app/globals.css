@@ -1,0 +1,184 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Mycélio — jetons de thème.
+
+   La palette et les polices viennent du cahier des charges et ne se discutent
+   pas. Deux pièges de contraste s'y cachent, corrigés ici :
+
+   - #B23A3A sur le fond sombre ne donne que 3,2:1, sous le seuil AA de 4,5:1.
+     --destructive prend donc une variante éclaircie (#D6605C, ~5,0:1) pour le
+     texte, et --warn-solid garde le rouge d'origine pour les aplats et filets.
+   - L'ocre #C89B3C tombe à ~2:1 sur fond clair. Le mode clair l'assombrit en
+     #8A6416 (~5,2:1). Réutiliser l'ocre sombre en clair est l'erreur à ne pas
+     commettre.
+--------------------------------------------------------------------------- */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-public-sans), sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-heading: var(--font-bricolage), var(--font-public-sans), sans-serif;
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-warn-solid: var(--warn-solid);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.3);
+  --radius-2xl: calc(var(--radius) * 1.6);
+}
+
+/* Mode clair — dérivé de la même famille forestière, jamais d'un crème à empattements. */
+:root {
+  --radius: 0.875rem;
+
+  --background: #fafaf7;
+  --foreground: #1a1d16;
+  --card: #ffffff;
+  --card-foreground: #1a1d16;
+  --popover: #ffffff;
+  --popover-foreground: #1a1d16;
+
+  --primary: #8a6416;
+  --primary-foreground: #fafaf7;
+  --secondary: #f1f2ec;
+  --secondary-foreground: #1a1d16;
+  --muted: #f1f2ec;
+  --muted-foreground: #5a6650;
+  --accent: #f1f2ec;
+  --accent-foreground: #1a1d16;
+
+  --destructive: #a32f2f;
+  --warn-solid: #b23a3a;
+
+  --border: #dcdfd2;
+  --input: #dcdfd2;
+  --ring: #8a6416;
+
+  --scrim: rgb(250 250 247 / 0.78);
+  --contour: #5a6650;
+}
+
+/* Mode sombre — le défaut. L'app se consulte à 6 h du matin dans une voiture. */
+.dark {
+  --background: #12140f; /* nuit sous couvert */
+  --foreground: #e8e6dd; /* craie */
+  --card: #1e2118; /* humus */
+  --card-foreground: #e8e6dd;
+  --popover: #1e2118;
+  --popover-foreground: #e8e6dd;
+
+  --primary: #c89b3c; /* ocre de spore */
+  --primary-foreground: #12140f;
+  --secondary: #2a3324; /* mousse */
+  --secondary-foreground: #e8e6dd;
+  --muted: #1e2118;
+  --muted-foreground: #9fb08a; /* lichen */
+  --accent: #2a3324;
+  --accent-foreground: #e8e6dd;
+
+  --destructive: #d6605c;
+  --warn-solid: #b23a3a;
+
+  --border: #2a3324;
+  --input: #2a3324;
+  --ring: #c89b3c;
+
+  --scrim: rgb(18 20 15 / 0.78);
+  --contour: #9fb08a;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    /* Empêche le rebond élastique sous la carte plein cadre sur iOS. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Toute donnée chiffrée se lit en chasse fixe et en chiffres tabulaires : c'est une
+     citation de la culture cartographique, pas un tic de développeur. */
+  [data-numeric] {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
+
+  /* Le plancher de qualité ne s'annonce pas, il se tient. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Surface flottante posée sur la carte : c'est le motif de mise en page de toute
+     l'application, la carte n'étant jamais rognée par du chrome. */
+  .surface-float {
+    background: var(--scrim);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    @apply border-border rounded-lg border;
+  }
+
+  /* Courbes de niveau en fond, très en retrait. Statique, donc sans incidence sur
+     prefers-reduced-motion. */
+  .topo-texture {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .topo-texture::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.05;
+    background-image: repeating-radial-gradient(
+      ellipse 60% 40% at 30% 40%,
+      transparent 0 22px,
+      var(--contour) 22px 23px
+    );
+  }
+}

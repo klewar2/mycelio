@@ -12,6 +12,15 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
+
+-- Repart d'une base sans compte : ces tests décrivent des invariants, pas l'état courant de
+-- l'instance de développement. session_replication_role neutralise les triggers le temps du
+-- nettoyage, sans quoi la garde du dernier super_admin l'empêcherait. Le rollback final annule
+-- l'ensemble.
+set local session_replication_role = replica;
+delete from public.profiles;
+delete from auth.users;
+set local session_replication_role = origin;
 select plan(9);
 
 select tests.create_user('super@mycelio.test', 'Sylvie') as sa \gset
