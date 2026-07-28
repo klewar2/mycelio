@@ -111,9 +111,29 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
 
   const style = useMemo(() => buildStyle(basemap), [basemap]);
 
+  /**
+   * Relève l'emprise visible, pour reclasser les couleurs.
+   *
+   * Branché sur `idle` et non sur `load` : `getBounds()` projette les coins de l'écran, ce qui
+   * exige une matrice de projection complète et un conteneur déjà dimensionné. Appelé trop tôt,
+   * il lève — et l'exception laisse la carte à moitié construite. Son `remove()` échoue alors au
+   * double montage de React StrictMode, la file de rendu de MapLibre reste bloquée sur
+   * « already running », et la carte devient impossible à déplacer tout en s'affichant
+   * normalement.
+   *
+   * Le try/catch est une ceinture de plus : mieux vaut un classement des couleurs légèrement en
+   * retard qu'une carte morte.
+   */
   const onMove = useCallback(() => {
     const map = mapRef.current?.getMap();
-    if (map) setBounds(map.getBounds());
+    if (!map) return;
+    const canvas = map.getCanvas();
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+    try {
+      setBounds(map.getBounds());
+    } catch {
+      // emprise indisponible à cet instant : on réessaiera au prochain idle
+    }
   }, []);
 
   const onClick = useCallback((event: MapLayerMouseEvent) => {
@@ -146,8 +166,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         ref={mapRef}
         initialViewState={{ longitude: center[1], latitude: center[0], zoom }}
         mapStyle={style}
-        onLoad={onMove}
-        onMoveEnd={onMove}
+        onIdle={onMove}
         onClick={onClick}
         interactiveLayerIds={["mailles"]}
         cursor="grab"
