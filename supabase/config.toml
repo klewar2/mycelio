@@ -15,7 +15,11 @@ schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
-max_rows = 1000
+# Relevé de 1 000 à 6 000 : en résolution 9 l'emprise compte 3 837 mailles agrégées en
+# résolution 7, et le plafond par défaut tronquait silencieusement la carte — aucune erreur,
+# juste des secteurs manquants. 6 000 laisse de la marge sans ouvrir la porte à des réponses
+# démesurées.
+max_rows = 6000
 # Controls whether new tables, views, sequences and functions created in the `public` schema by
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs. When unset, new entities are NOT auto-exposed, matching the new cloud

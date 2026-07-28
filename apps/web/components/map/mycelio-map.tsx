@@ -12,8 +12,6 @@ import MapGL, {
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre";
-import type { LngLatBounds } from "maplibre-gl";
-import { cellToLatLng } from "h3-js";
 import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -40,7 +38,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [basemap, setBasemap] = useState<BasemapId>("plan");
   const [cells, setCells] = useState<Cell[]>([]);
   const [loading, setLoading] = useState(true);
-  const [bounds, setBounds] = useState<LngLatBounds | null>(null);
+  const [view, setView] = useState<{ bbox: [number, number, number, number]; detailed: boolean } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [species, setSpecies] = useState<Species[]>([]);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -49,8 +47,10 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
+    if (!view) return;
     let cancelled = false;
-    fetch("/api/cells")
+    const query = `bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
+    fetch(`/api/cells?${query}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -62,7 +62,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     fetch("/api/species")
@@ -76,9 +76,10 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
 
   // Les scores changent avec l'espèce, jamais avec le jour : les huit jours arrivent ensemble.
   useEffect(() => {
-    if (!chosen) return;
+    if (!chosen || !view) return;
     let cancelled = false;
-    fetch(`/api/forecast?species=${encodeURIComponent(chosen)}`)
+    const query = `species=${encodeURIComponent(chosen)}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
+    fetch(`/api/forecast?${query}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -89,34 +90,21 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [chosen]);
+  }, [chosen, view]);
 
   /**
-   * Le GeoJSON est construit UNE SEULE FOIS, à l'arrivée des données.
+   * Le GeoJSON suit la fenêtre, pas le curseur de jour.
    *
-   * Le reconstruire à chaque déplacement — ce que faisait la première version pour recalculer
-   * les percentiles — obligeait MapLibre à réanalyser 13 000 polygones et à les renvoyer au GPU
-   * à chaque relâchement de la souris. Le fil principal gelait assez longtemps pour que la carte
-   * paraisse tout simplement bloquée.
+   * Il se reconstruit à chaque déplacement — mais le serveur ne renvoyant que la fenêtre
+   * visible, cela représente quelques centaines à quelques milliers d'hexagones, pas les
+   * 86 000 de la grille. En revanche, changer de jour ne le reconstruit PAS : les huit jours
+   * sont écrits comme autant de propriétés `s0`..`s7`, et le curseur ne modifie qu'une
+   * expression de couleur, ce qui est gratuit.
    */
   const geojson = useMemo(() => toGeoJSON(cells, forecast), [cells, forecast]);
 
-  const centers = useMemo(() => {
-    const byIndex = new Map<string, [number, number]>();
-    for (const cell of cells) {
-      const [lat, lng] = cellToLatLng(cell.h);
-      byIndex.set(cell.h, [lng, lat]);
-    }
-    return byIndex;
-  }, [cells]);
-
-  const visible = useMemo(() => {
-    if (!bounds) return cells;
-    return cells.filter((cell) => {
-      const center = centers.get(cell.h);
-      return center ? bounds.contains(center) : false;
-    });
-  }, [cells, bounds, centers]);
+  // Plus de filtrage côté client : le serveur ne renvoie déjà que la fenêtre visible.
+  const visible = cells;
 
   /**
    * Seuils de couleur, recalculés sur la fenêtre visible à chaque déplacement.
@@ -165,7 +153,17 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     const canvas = map.getCanvas();
     if (!canvas || canvas.width === 0 || canvas.height === 0) return;
     try {
-      setBounds(map.getBounds());
+      const b = map.getBounds();
+      // Une marge de 30 % autour de l'écran : le déplacement suivant trouve déjà ses mailles
+      // chargées, et la carte ne se remplit pas par à-coups.
+      const padX = (b.getEast() - b.getWest()) * 0.3;
+      const padY = (b.getNorth() - b.getSouth()) * 0.3;
+      setView({
+        bbox: [b.getWest() - padX, b.getSouth() - padY, b.getEast() + padX, b.getNorth() + padY],
+        // En dessous de ce zoom, une maille de 280 m fait moins d'un pixel : on bascule sur le
+        // parent en résolution 7, agrégé côté serveur.
+        detailed: map.getZoom() >= 11,
+      });
     } catch {
       // emprise indisponible à cet instant : on réessaiera au prochain idle
     }

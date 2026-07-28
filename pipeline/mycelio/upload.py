@@ -15,6 +15,7 @@ from .db import connect
 
 COLUMNS = [
     "h3_index",
+    "h3_r7",
     "dept",
     "lat",
     "lng",
@@ -59,6 +60,10 @@ def assemble(
         .merge(hydro, on="h3_index", how="left")
     )
     frame = frame[frame["forest_share"] >= min_forest_share].copy()
+
+    # Parent en résolution 7 : c'est sur lui que l'API agrège quand la carte est dézoomée,
+    # 92 000 hexagones de 280 m étant sous-pixel à l'échelle d'un département.
+    frame["h3_r7"] = [h3.cell_to_parent(index, 7) for index in frame["h3_index"]]
 
     centers = [h3.cell_to_latlng(index) for index in frame["h3_index"]]
     frame["lat"] = [lat for lat, _ in centers]

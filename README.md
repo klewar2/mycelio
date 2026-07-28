@@ -75,10 +75,24 @@ uv run python -m mycelio.score  # recalcule les scores de poussée
 Compter une dizaine de minutes au premier passage (36 Mo de MNT, 196 000 chemins récupérés en
 WFS), une minute ensuite : tout est mis en cache dans `pipeline/data/`, hors du dépôt.
 
-État actuel : **13 092 mailles** sur les trois départements (31 : 3 177, 81 : 4 256,
-11 : 5 659). Les mailles sous 20 % de couvert boisé sont écartées : sans hôte mycorhizien, leur
-score est structurellement nul. Étendre l'emprise demande d'ajouter les millésimes IGN du
-département dans `VINTAGES` (`pipeline/mycelio/__main__.py`).
+État actuel : **86 137 mailles en résolution H3 9**, soit environ 280 m de largeur (31 : 21 248,
+81 : 27 626, 11 : 37 263). Les mailles sous 20 % de couvert boisé sont écartées : sans hôte
+mycorhizien, leur score est structurellement nul. Étendre l'emprise demande d'ajouter les
+millésimes IGN du département dans `VINTAGES` (`pipeline/mycelio/__main__.py`).
+
+À cette résolution, trois contraintes ont imposé des choix de schéma plutôt que de simples
+réglages :
+
+- **Volumétrie.** Une ligne par (maille, espèce, jour) donnait 110 Mo pour 838 000 lignes en
+  résolution 8 ; en résolution 9 cela aurait fait environ 770 Mo, au-delà des 500 Mo du palier
+  gratuit. Les huit jours tiennent désormais dans un tableau : 689 000 lignes, 121 Mo, base
+  totale à 172 Mo.
+- **Charge utile.** La carte n'interroge plus que sa fenêtre, et le serveur agrège sur le parent
+  en résolution 7 sous le zoom 11 — 90 000 hexagones de 280 m sont sous-pixel à l'échelle d'un
+  département.
+- **RLS.** Les appels de fonction dans les politiques sont enveloppés dans un sous-select
+  (`(select public.can('x'))`), sans quoi Postgres les réévalue à chaque ligne : sur 86 000
+  mailles, une requête de 22 ms en prenait près de 1 000.
 
 ### Un écart au cahier des charges, assumé
 

@@ -34,7 +34,7 @@ export async function GET(
   // Probabilités du jour, toutes espèces, pour établir le trio de tête.
   const { data: scores } = await supabase
     .from("forecast")
-    .select("species_id, day_offset, score, confidence")
+    .select("species_id, scores, confidence")
     .eq("h3_index", h3);
 
   const { data: species } = await supabase
@@ -43,20 +43,13 @@ export async function GET(
     .eq("is_enabled", true);
 
   const byId = new Map((species ?? []).map((s) => [s.id, s]));
-  const series = new Map<number, { scores: number[]; confidence: number }>();
 
-  for (const row of scores ?? []) {
-    let entry = series.get(row.species_id);
-    if (!entry) {
-      entry = { scores: [], confidence: row.confidence };
-      series.set(row.species_id, entry);
-    }
-    entry.scores[row.day_offset] = row.score;
-  }
-
-  const ranked = [...series.entries()]
-    .map(([id, entry]) => {
-      const info = byId.get(id);
+  // Une ligne par (maille, espèce), portant déjà la série des huit jours : depuis le passage en
+  // résolution 9, le tableau remplace une ligne par jour — sept fois moins de lignes en base.
+  const ranked = (scores ?? [])
+    .map((row) => {
+      const info = byId.get(row.species_id);
+      const entry = { scores: row.scores ?? [], confidence: row.confidence };
       return {
         slug: info?.slug ?? "",
         name: info?.common_name_fr ?? "",

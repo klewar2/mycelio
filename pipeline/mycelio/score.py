@@ -106,6 +106,7 @@ def run() -> int:
             )
             conf = scoring.confidence(soil_ph, matched, forest_share)
 
+            daily: list[np.ndarray] = []
             lag = int(sp["rain_lag_days"] or 14)
             rain_opt = float(sp["rain_optimum_mm"] or weights.rain_optimum_mm)
 
@@ -139,19 +140,25 @@ def run() -> int:
                     weights=weights,
                 )
 
-                score = np.clip(habitat * phenology * meteo, 0.0, 1.0)
-                rows.append(
-                    pd.DataFrame(
-                        {
-                            "h3_index": cells["h3_index"].to_numpy(),
-                            "species_id": int(sp["id"]),
-                            "day_offset": offset,
-                            "score": np.round(score, 4),
-                            "confidence": np.round(conf, 3),
-                            "run_id": str(run_id),
-                        }
-                    )
+                daily.append(np.clip(habitat * phenology * meteo, 0.0, 1.0))
+
+            if not daily:
+                continue
+
+            # Un tableau Postgres par maille : {0.05,0.03,...}. Sept fois moins de lignes que
+            # le schéma initial, et c'est déjà la forme que consomme la carte.
+            stacked = np.round(np.vstack(daily).T, 4)
+            rows.append(
+                pd.DataFrame(
+                    {
+                        "h3_index": cells["h3_index"].to_numpy(),
+                        "species_id": int(sp["id"]),
+                        "scores": ["{" + ",".join(f"{v:g}" for v in row) + "}" for row in stacked],
+                        "confidence": np.round(conf, 3),
+                        "run_id": str(run_id),
+                    }
                 )
+            )
 
         frame = pd.concat(rows, ignore_index=True)
 
@@ -163,8 +170,8 @@ def run() -> int:
             with conn.cursor() as cur:
                 cur.execute("truncate public.forecast")
                 with cur.copy(
-                    "copy public.forecast (h3_index, species_id, day_offset, score, confidence,"
-                    " run_id) from stdin with (format csv)"
+                    "copy public.forecast (h3_index, species_id, scores, confidence, run_id)"
+                    " from stdin with (format csv)"
                 ) as copy:
                     copy.write(buffer.read())
                 cur.execute(

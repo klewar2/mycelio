@@ -133,6 +133,7 @@ export type Database = {
           forest_code: string | null
           forest_share: number | null
           h3_index: string
+          h3_r7: string | null
           hosts: string[]
           northness: number | null
           slope_pct: number | null
@@ -157,6 +158,7 @@ export type Database = {
           forest_code?: string | null
           forest_share?: number | null
           h3_index: string
+          h3_r7?: string | null
           hosts?: string[]
           northness?: number | null
           slope_pct?: number | null
@@ -181,6 +183,7 @@ export type Database = {
           forest_code?: string | null
           forest_share?: number | null
           h3_index?: string
+          h3_r7?: string | null
           hosts?: string[]
           northness?: number | null
           slope_pct?: number | null
@@ -245,26 +248,23 @@ export type Database = {
       forecast: {
         Row: {
           confidence: number
-          day_offset: number
           h3_index: string
           run_id: string
-          score: number
+          scores: number[]
           species_id: number
         }
         Insert: {
           confidence: number
-          day_offset: number
           h3_index: string
           run_id: string
-          score: number
+          scores: number[]
           species_id: number
         }
         Update: {
           confidence?: number
-          day_offset?: number
           h3_index?: string
           run_id?: string
-          score?: number
+          scores?: number[]
           species_id?: number
         }
         Relationships: [
@@ -520,6 +520,37 @@ export type Database = {
     }
     Functions: {
       can: { Args: { perm: string }; Returns: boolean }
+      cells_in_view: {
+        Args: {
+          detailed?: boolean
+          east: number
+          north: number
+          south: number
+          west: number
+        }
+        Returns: {
+          a: number
+          e: string
+          f: number
+          h: string
+          n: number
+        }[]
+      }
+      forecast_in_view: {
+        Args: {
+          detailed?: boolean
+          east: number
+          north: number
+          south: number
+          species_slug: string
+          west: number
+        }
+        Returns: {
+          c: number
+          h: string
+          s: number[]
+        }[]
+      }
       is_active_user: { Args: never; Returns: boolean }
     }
     Enums: {
