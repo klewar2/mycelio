@@ -119,6 +119,75 @@ export type Database = {
           },
         ]
       }
+      cells: {
+        Row: {
+          alt_m: number | null
+          centroid: unknown
+          curvature: number | null
+          dept: string
+          dist_edge_m: number | null
+          dist_path_m: number | null
+          dist_stream_m: number | null
+          eastness: number | null
+          forest_code: string | null
+          forest_share: number | null
+          h3_index: string
+          northness: number | null
+          slope_pct: number | null
+          soil_clay_pct: number | null
+          soil_ph: number | null
+          soil_soc: number | null
+          solar_index: number | null
+          tpi: number | null
+          twi: number | null
+          updated_at: string
+        }
+        Insert: {
+          alt_m?: number | null
+          centroid: unknown
+          curvature?: number | null
+          dept: string
+          dist_edge_m?: number | null
+          dist_path_m?: number | null
+          dist_stream_m?: number | null
+          eastness?: number | null
+          forest_code?: string | null
+          forest_share?: number | null
+          h3_index: string
+          northness?: number | null
+          slope_pct?: number | null
+          soil_clay_pct?: number | null
+          soil_ph?: number | null
+          soil_soc?: number | null
+          solar_index?: number | null
+          tpi?: number | null
+          twi?: number | null
+          updated_at?: string
+        }
+        Update: {
+          alt_m?: number | null
+          centroid?: unknown
+          curvature?: number | null
+          dept?: string
+          dist_edge_m?: number | null
+          dist_path_m?: number | null
+          dist_stream_m?: number | null
+          eastness?: number | null
+          forest_code?: string | null
+          forest_share?: number | null
+          h3_index?: string
+          northness?: number | null
+          slope_pct?: number | null
+          soil_clay_pct?: number | null
+          soil_ph?: number | null
+          soil_soc?: number | null
+          solar_index?: number | null
+          tpi?: number | null
+          twi?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       permissions: {
         Row: {
           category: string
