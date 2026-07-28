@@ -1,0 +1,22 @@
+{
+  "name": "mycelio",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Aide à la cueillette de champignons — Haute-Garonne, Tarn, Aude",
+  "scripts": {
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "db:types": "supabase gen types typescript --local > apps/web/types/database.ts",
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "typecheck": "pnpm --filter web exec tsc --noEmit",
+    "test": "pnpm --filter web test"
+  },
+  "devDependencies": {
+    "supabase": "^2.110.0"
+  },
+  "packageManager": "pnpm@10.28.2"
+}
