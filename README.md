@@ -17,8 +17,8 @@ d'application. La carte, le pipeline géospatial et le moteur de scoring viennen
 | Phase | Contenu | État |
 |---|---|:-:|
 | 1 | Next.js + Supabase, auth, RBAC, écrans admin | ✅ |
-| 2 | Pipeline Python, table `cells` | ✅ Haute-Garonne |
-| 3 | Carte MapLibre, fonds IGN, hexagones | à faire |
+| 2 | Pipeline Python, table `cells` | ✅ 31, 81, 11 |
+| 3 | Carte MapLibre, fonds IGN, hexagones | ✅ |
 | 4 | Scoring par règles, cron quotidien | à faire |
 | 5 | Panneau d'inspection, conseils terrain | à faire |
 | 6 | Carnet de sorties, export GPX | à faire |
@@ -74,16 +74,12 @@ uv run python -m mycelio 31     # un seul
 Compter une dizaine de minutes au premier passage (36 Mo de MNT, 196 000 chemins récupérés en
 WFS), une minute ensuite : tout est mis en cache dans `pipeline/data/`, hors du dépôt.
 
-État actuel : **2 759 mailles pour la Haute-Garonne**, sur 9 081 générées — le reste n'atteint
-pas les 20 % de couvert boisé et n'a donc aucun pouvoir prédictif. Le Tarn et l'Aude demandent
-d'ajouter leurs millésimes IGN dans `VINTAGES` (`pipeline/mycelio/__main__.py`).
+État actuel : **13 092 mailles** sur les trois départements (31 : 3 177, 81 : 4 256,
+11 : 5 659). Les mailles sous 20 % de couvert boisé sont écartées : sans hôte mycorhizien, leur
+score est structurellement nul. Étendre l'emprise demande d'ajouter les millésimes IGN du
+département dans `VINTAGES` (`pipeline/mycelio/__main__.py`).
 
-### Deux écarts au cahier des charges, assumés
-
-**BD Forêt V1 au lieu de la V2.** La V2 n'est pas diffusée par la Géoplateforme : son flux ne
-contient que des entrées `1-0` et les URL directes de V2 répondent 400. La V1 nomme malgré tout
-les essences dominantes, ce qui suffit à l'appariement mycorhizien, mais elle ne distingue pas le
-châtaignier — traité comme feuillu générique — et son inventaire date de 1996.
+### Un écart au cahier des charges, assumé
 
 **BD ALTI 25 m au lieu du RGE ALTI 5 m.** Sur des mailles de 740 m, le 5 m est du détail qu'on
 moyenne de toute façon, et il produit des dérivées nettement plus bruitées : pente et courbure
