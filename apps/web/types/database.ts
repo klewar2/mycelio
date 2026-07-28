@@ -129,9 +129,11 @@ export type Database = {
           dist_path_m: number | null
           dist_stream_m: number | null
           eastness: number | null
+          essence: string | null
           forest_code: string | null
           forest_share: number | null
           h3_index: string
+          hosts: string[]
           northness: number | null
           slope_pct: number | null
           soil_clay_pct: number | null
@@ -151,9 +153,11 @@ export type Database = {
           dist_path_m?: number | null
           dist_stream_m?: number | null
           eastness?: number | null
+          essence?: string | null
           forest_code?: string | null
           forest_share?: number | null
           h3_index: string
+          hosts?: string[]
           northness?: number | null
           slope_pct?: number | null
           soil_clay_pct?: number | null
@@ -173,9 +177,11 @@ export type Database = {
           dist_path_m?: number | null
           dist_stream_m?: number | null
           eastness?: number | null
+          essence?: string | null
           forest_code?: string | null
           forest_share?: number | null
           h3_index?: string
+          hosts?: string[]
           northness?: number | null
           slope_pct?: number | null
           soil_clay_pct?: number | null

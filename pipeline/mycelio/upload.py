@@ -27,6 +27,8 @@ COLUMNS = [
     "curvature",
     "solar_index",
     "forest_code",
+    "essence",
+    "hosts",
     "forest_share",
     "dist_edge_m",
     "dist_stream_m",
@@ -73,6 +75,11 @@ def load(frame: pd.DataFrame, dept: str) -> int:
     source de la grille, et un rejeu doit produire exactement le même état — y compris quand
     une maille cesse d'être retenue parce que le seuil forestier a changé.
     """
+    frame = frame.copy()
+    # COPY attend la syntaxe littérale d'un tableau Postgres — {chene,feuillu} — et non la
+    # représentation Python d'une liste.
+    frame["hosts"] = frame["hosts"].map(lambda v: "{" + ",".join(v or []) + "}")
+
     buffer = io.StringIO()
     # En format CSV, COPY lit un champ vide non quoté comme NULL — pas \N, qui est la
     # convention du format texte.
