@@ -23,7 +23,9 @@ export function MapControls({
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 lg:inset-x-auto lg:right-0 lg:bottom-0">
-      <div className="pointer-events-auto mx-3 mb-[calc(env(safe-area-inset-bottom)+5.5rem)] flex flex-col gap-2 lg:mr-3 lg:mb-3 lg:items-end">
+      {/* Sur desktop, la marge basse dégage l'attribution IGN, que MapLibre place elle aussi en
+          bas à droite — sans quoi les deux se chevauchent. */}
+      <div className="pointer-events-auto mx-3 mb-[calc(env(safe-area-inset-bottom)+5.5rem)] flex flex-col gap-2 lg:mr-3 lg:mb-9 lg:items-end">
         <div className="surface-float flex items-center gap-1 self-start p-1 lg:self-end">
           <Layers className="text-muted-foreground mx-2 size-4" aria-hidden />
           {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => (

@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Renommé : `Map` entrerait en collision avec le Map natif de JavaScript, utilisé plus bas.
 import MapGL, {
@@ -13,6 +14,7 @@ import MapGL, {
 } from "react-map-gl/maplibre";
 import type { LngLatBounds } from "maplibre-gl";
 import { cellToLatLng } from "h3-js";
+import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
@@ -31,6 +33,8 @@ const RAMP = ["#E8DCC0", "#D9BE7E", "#C89B3C", "#A87A28", "#8A5A16"];
 
 export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const mapRef = useRef<MapRef>(null);
+  // Le type de l'instance n'est pas ré-exporté par la bibliothèque : on le dérive.
+  const geolocateRef = useRef<React.ComponentRef<typeof GeolocateControl>>(null);
   const [basemap, setBasemap] = useState<BasemapId>("plan");
   const [cells, setCells] = useState<Cell[]>([]);
   const [essences, setEssences] = useState<string[]>([]);
@@ -136,6 +140,17 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     }
   }, []);
 
+  /**
+   * Demande la position dès que la carte est prête.
+   *
+   * Le contrôle de MapLibre n'agit qu'au clic. Or l'usage réel est d'ouvrir l'app en arrivant
+   * sur place : devoir chercher un bouton pour se situer est une friction inutile. Le navigateur
+   * ne demandera l'autorisation qu'une fois, et un refus est signalé par onError.
+   */
+  const onLoad = useCallback(() => {
+    geolocateRef.current?.trigger();
+  }, []);
+
   const onClick = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0];
     setSelected(feature ? (feature.properties?.h as string) : null);
@@ -166,6 +181,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         ref={mapRef}
         initialViewState={{ longitude: center[1], latitude: center[0], zoom }}
         mapStyle={style}
+        onLoad={onLoad}
         onIdle={onMove}
         onClick={onClick}
         interactiveLayerIds={["mailles"]}
@@ -177,13 +193,25 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
             commandes sont secondaires face au geste direct. */}
         <NavigationControl position="top-right" showCompass={false} />
         <GeolocateControl
+          ref={geolocateRef}
           position="top-right"
           // Suit la position pendant la marche, sans re-centrer de force à chaque relevé :
           // sinon impossible de regarder la maille d'à côté tout en avançant.
           trackUserLocation
           showUserLocation
           positionOptions={{ enableHighAccuracy: true }}
-          fitBoundsOptions={{ maxZoom: 14 }}
+          fitBoundsOptions={{ maxZoom: 13 }}
+          // Sans cela, un refus de permission ou une géolocalisation indisponible échouent en
+          // silence : le bouton clignote et rien ne se passe, sans qu'on sache pourquoi.
+          onError={(error) => {
+            const reason =
+              error.code === 1
+                ? "Autorisation refusée. Autorise la localisation pour ce site dans ton navigateur."
+                : error.code === 3
+                  ? "Position trop longue à obtenir. Réessaie à l'extérieur ou avec le Wi-Fi activé."
+                  : "Position indisponible. Vérifie que la localisation est activée sur l'appareil.";
+            toast.error(reason);
+          }}
         />
         <ScaleControl position="bottom-left" unit="metric" maxWidth={120} />
 
