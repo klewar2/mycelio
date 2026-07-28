@@ -1,0 +1,39 @@
+[project]
+name = "mycelio-pipeline"
+version = "0.1.0"
+description = "Pipeline géospatial hors ligne — construit la table cells consommée par l'app web"
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    # Vecteur
+    "geopandas>=1.1",
+    "shapely>=2.1",
+    "pyogrio>=0.13",
+    # Raster
+    "rasterio>=1.4",
+    "rioxarray>=0.19",
+    # Grille
+    "h3>=4.2",
+    # Calcul
+    "numpy>=2.1",
+    "scipy>=1.14",
+    # Terrain : accumulation de flux pour le TWI
+    "pysheds>=0.4",
+    "numba>=0.60",
+    # Réseau et base
+    "httpx>=0.28",
+    "psycopg[binary]>=3.2",
+    "tqdm>=4.67",
+    "py7zr>=1.1.3",
+    "pyarrow>=25.0.0",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.9", "pytest>=8.3"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
