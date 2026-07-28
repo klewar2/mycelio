@@ -18,7 +18,8 @@ import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
-import { toGeoJSON, type Cell } from "@/lib/map/hexagons";
+import { toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
+import { SpeciesPicker, type Species } from "./species-picker";
 import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
 
@@ -41,6 +42,10 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [loading, setLoading] = useState(true);
   const [bounds, setBounds] = useState<LngLatBounds | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [species, setSpecies] = useState<Species[]>([]);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [forecast, setForecast] = useState<Map<string, Forecast>>(new Map());
+  const [day, setDay] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +64,33 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    fetch("/api/species")
+      .then((r) => r.json())
+      .then((data) => {
+        const list: Species[] = data.species ?? [];
+        setSpecies(list);
+        setChosen((current) => current ?? list[0]?.slug ?? null);
+      });
+  }, []);
+
+  // Les scores changent avec l'espèce, jamais avec le jour : les huit jours arrivent ensemble.
+  useEffect(() => {
+    if (!chosen) return;
+    let cancelled = false;
+    fetch(`/api/forecast?species=${encodeURIComponent(chosen)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const next = new Map<string, Forecast>();
+        for (const row of data.cells ?? []) next.set(row.h, row);
+        setForecast(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chosen]);
+
   /**
    * Le GeoJSON est construit UNE SEULE FOIS, à l'arrivée des données.
    *
@@ -67,7 +99,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
    * à chaque relâchement de la souris. Le fil principal gelait assez longtemps pour que la carte
    * paraisse tout simplement bloquée.
    */
-  const geojson = useMemo(() => toGeoJSON(cells), [cells]);
+  const geojson = useMemo(() => toGeoJSON(cells, forecast), [cells, forecast]);
 
   const centers = useMemo(() => {
     const byIndex = new Map<string, [number, number]>();
@@ -95,8 +127,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
    */
   const stops = useMemo(() => {
     const values = visible
-      .map((c) => c.f)
-      .filter((v): v is number => v != null)
+      .map((c) => forecast.get(c.h)?.s?.[day] ?? 0)
       .sort((a, b) => a - b);
     if (values.length === 0) return null;
 
@@ -111,7 +142,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
       previous = value;
     }
     return out;
-  }, [visible]);
+  }, [visible, forecast, day]);
 
   const style = useMemo(() => buildStyle(basemap), [basemap]);
 
@@ -160,14 +191,14 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [minOpacity, maxOpacity] = opacityRange;
 
   const colorExpression = stops
-    ? ["interpolate", ["linear"], ["get", "value"], ...stops.flatMap((s, i) => [s, RAMP[i]])]
+    ? ["interpolate", ["linear"], ["get", `s${day}`], ...stops.flatMap((s, i) => [s, RAMP[i]])]
     : RAMP[2];
 
   const opacityExpression = stops
     ? [
         "interpolate",
         ["linear"],
-        ["get", "value"],
+        ["get", `s${day}`],
         stops[0],
         minOpacity,
         stops[stops.length - 1],
@@ -243,6 +274,14 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         </Source>
       </MapGL>
 
+      <SpeciesPicker
+        species={species}
+        selected={chosen}
+        onSelect={setChosen}
+        day={day}
+        onDayChange={setDay}
+      />
+
       <MapControls
         basemap={basemap}
         onBasemapChange={setBasemap}
@@ -252,6 +291,9 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
 
       <CellSheet
         cell={selectedCell}
+        forecast={selected ? (forecast.get(selected) ?? null) : null}
+        day={day}
+        speciesName={species.find((s) => s.slug === chosen)?.common_name_fr ?? null}
         essences={essences}
         onClose={() => setSelected(null)}
       />

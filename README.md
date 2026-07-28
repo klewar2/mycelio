@@ -19,7 +19,7 @@ d'application. La carte, le pipeline géospatial et le moteur de scoring viennen
 | 1 | Next.js + Supabase, auth, RBAC, écrans admin | ✅ |
 | 2 | Pipeline Python, table `cells` | ✅ 31, 81, 11 |
 | 3 | Carte MapLibre, fonds IGN, hexagones | ✅ |
-| 4 | Scoring par règles, cron quotidien | à faire |
+| 4 | Scoring par règles, cron quotidien | ✅ |
 | 5 | Panneau d'inspection, conseils terrain | à faire |
 | 6 | Carnet de sorties, export GPX | à faire |
 | 7 | LightGBM, validation spatiale | à faire |
@@ -69,6 +69,7 @@ cd pipeline
 uv sync
 uv run python -m mycelio        # tous les départements de app_settings
 uv run python -m mycelio 31     # un seul
+uv run python -m mycelio.score  # recalcule les scores de poussée
 ```
 
 Compter une dizaine de minutes au premier passage (36 Mo de MNT, 196 000 chemins récupérés en

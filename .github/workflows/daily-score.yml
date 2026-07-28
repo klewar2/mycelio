@@ -1,0 +1,41 @@
+name: Scoring quotidien
+
+# 05h00 UTC : la prévision Open-Meteo du jour est publiée, et personne ne consulte encore.
+#
+# Effet de bord bienvenu : cette écriture quotidienne empêche la mise en veille automatique du
+# projet Supabase gratuit, qui s'endort après une semaine d'inactivité.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  score:
+    name: Recalculer les scores
+    runs-on: ubuntu-latest
+    # Le calcul lui-même prend une douzaine de secondes ; la marge couvre la lenteur
+    # éventuelle d'Open-Meteo.
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Installer les dépendances
+        working-directory: pipeline
+        run: uv sync --frozen
+
+      - name: Calculer et charger les scores
+        working-directory: pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: uv run python -m mycelio.score
+
+      # Le pipeline trace lui-même ses échecs dans forecast_runs, mais un run qui n'atteint
+      # jamais la base ne laisse aucune trace : d'où cette alerte de dernier recours.
+      - name: Signaler l'échec
+        if: failure()
+        run: echo "::error::Le scoring quotidien a échoué. Voir public.forecast_runs."

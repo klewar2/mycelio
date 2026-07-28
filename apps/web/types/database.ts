@@ -194,6 +194,75 @@ export type Database = {
         }
         Relationships: []
       }
+      forecast: {
+        Row: {
+          confidence: number
+          day_offset: number
+          h3_index: string
+          run_id: string
+          score: number
+          species_id: number
+        }
+        Insert: {
+          confidence: number
+          day_offset: number
+          h3_index: string
+          run_id: string
+          score: number
+          species_id: number
+        }
+        Update: {
+          confidence?: number
+          day_offset?: number
+          h3_index?: string
+          run_id?: string
+          score?: number
+          species_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forecast_h3_index_fkey"
+            columns: ["h3_index"]
+            isOneToOne: false
+            referencedRelation: "cells"
+            referencedColumns: ["h3_index"]
+          },
+          {
+            foreignKeyName: "forecast_species_id_fkey"
+            columns: ["species_id"]
+            isOneToOne: false
+            referencedRelation: "species"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forecast_runs: {
+        Row: {
+          cells_count: number | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          cells_count?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          started_at?: string
+          status: string
+        }
+        Update: {
+          cells_count?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       permissions: {
         Row: {
           category: string

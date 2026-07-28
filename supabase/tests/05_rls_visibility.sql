@@ -23,8 +23,10 @@ select tests.create_user('admin@mycelio.test',  'Adrien') as ad \gset
 select tests.create_user('viewer@mycelio.test', 'Valérie') as vw \gset
 select tests.set_role(:'ad'::uuid, 'admin');
 
+-- Slug préfixé : les espèces réelles sont désormais seedées par migration, et réutiliser
+-- l'un de leurs identifiants ferait échouer la contrainte d'unicité.
 insert into public.species (slug, scientific_name, common_name_fr)
-values ('cepe-de-bordeaux', 'Boletus edulis', 'Cèpe de Bordeaux');
+values ('test-espece', 'Boletus fictus', 'Espèce de test');
 
 -- --------------------------------------------------------------------------
 -- Un viewer ne voit que lui-même.
@@ -75,7 +77,7 @@ select throws_ok(
 
 select throws_ok(
   'insert into public.species (slug, scientific_name, common_name_fr)
-   values (''girolle'', ''Cantharellus cibarius'', ''Girolle'')',
+   values (''test-espece-2'', ''Cantharellus fictus'', ''Autre espèce de test'')',
   '42501', null,
   'Un viewer ne peut pas créer une espèce'
 );
