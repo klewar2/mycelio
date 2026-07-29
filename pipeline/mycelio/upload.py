@@ -37,6 +37,8 @@ COLUMNS = [
     "soil_ph",
     "soil_clay_pct",
     "soil_soc",
+    "restricted",
+    "restriction",
 ]
 
 
@@ -46,6 +48,7 @@ def assemble(
     terrain: pd.DataFrame,
     soil: pd.DataFrame,
     hydro: pd.DataFrame,
+    protected: pd.DataFrame,
     min_forest_share: float,
 ) -> pd.DataFrame:
     """Joint les couches et ne garde que les mailles réellement boisées.
@@ -58,7 +61,9 @@ def assemble(
         forest.merge(terrain, on="h3_index", how="inner")
         .merge(soil, on="h3_index", how="left")
         .merge(hydro, on="h3_index", how="left")
+        .merge(protected, on="h3_index", how="left")
     )
+    frame["restricted"] = frame["restricted"].fillna(False).astype(bool)
     frame = frame[frame["forest_share"] >= min_forest_share].copy()
 
     # Parent en résolution 7 : c'est sur lui que l'API agrège quand la carte est dézoomée,

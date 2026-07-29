@@ -1,18 +1,19 @@
 # Mycélio
 
-Aide privée à la cueillette de champignons sur la **Haute-Garonne, le Tarn et l'Aude**. Croise
-des données ouvertes géographiques et météo pour produire une carte de probabilité de poussée
-par maille hexagonale, et une lecture du terrain au point pointé.
+Aide privée à la cueillette de champignons sur la **Haute-Garonne (31), le Tarn (81) et l'Aude
+(11)**. Croise des données ouvertes géographiques et météo pour produire une carte de probabilité
+de poussée par maille hexagonale, et une lecture du terrain au point pointé.
 
 > Mycélio indique des zones favorables, **jamais** l'identité ni la comestibilité d'un
-> champignon. Aucune fonctionnalité d'identification n'existe, et il n'en existera pas.
+> champignon. Aucune fonctionnalité d'identification n'existe, et il n'en existera pas. Voir
+> [Sécurité alimentaire](#sécurité-alimentaire).
 
-Usage strictement non commercial et privé.
+Usage strictement non commercial et privé. C'est ce qui rend licites le palier Vercel Hobby et
+le filtrage GBIF en CC-BY-NC.
 
-## État : phase 1
+---
 
-Le socle est en place — authentification, RBAC paramétrable, écrans d'administration, coquille
-d'application. La carte, le pipeline géospatial et le moteur de scoring viennent ensuite.
+## État
 
 | Phase | Contenu | État |
 |---|---|:-:|
@@ -22,126 +23,330 @@ d'application. La carte, le pipeline géospatial et le moteur de scoring viennen
 | 4 | Scoring par règles, cron quotidien | ✅ |
 | 5 | Panneau d'inspection, conseils terrain | ✅ |
 | 6 | Carnet de sorties, export GPX | ✅ |
-| 7 | LightGBM, validation spatiale | à faire |
+| 7 | LightGBM, validation spatiale | après une saison de terrain |
+
+**Chiffres actuels** — 86 137 mailles H3 en résolution 9 (~280 m de largeur), 8 espèces,
+689 096 scores sur 8 jours, base à 172 Mo.
+
+---
 
 ## Démarrer
 
-Prérequis : Node 24, pnpm, et **Docker en marche** — le CLI Supabase lance toute la stack
-(Postgres, Auth, PostgREST, Studio) dans des conteneurs.
+Prérequis : Node 24, pnpm, `uv`, et **Docker en marche** — le CLI Supabase lance toute la stack
+(Postgres 17 + PostGIS, Auth, PostgREST, Studio) dans des conteneurs.
 
 ```bash
 pnpm install
-pnpm db:start          # affiche les URL et les clés locales
-cp apps/web/.env.example apps/web/.env.local   # puis y coller les clés affichées
-pnpm db:reset          # migrations + seed
-pnpm dev               # http://localhost:3000
+pnpm db:start                                   # affiche les URL et clés locales
+cp apps/web/.env.example apps/web/.env.local    # y coller les clés affichées
+pnpm db:reset                                   # migrations + seed
+pnpm dev                                        # http://localhost:3000
 ```
+
+Puis le pipeline, qui remplit la carte :
+
+```bash
+cd pipeline
+uv sync
+uv run python -m mycelio          # les trois départements
+uv run python -m mycelio.score    # les scores de poussée
+```
+
+Compter une quinzaine de minutes au premier passage, quelques minutes ensuite — tout est mis en
+cache dans `pipeline/data/`, hors du dépôt.
 
 ### Créer le premier compte
 
 Il n'y a **aucune inscription** : `enable_signup = false`, et il n'existe pas de page
-d'inscription. Les comptes sont créés par un administrateur depuis `/admin/comptes`.
+d'inscription. Les comptes sont créés depuis `/admin/comptes`.
 
-Le tout premier compte se crée donc hors application, depuis Supabase Studio
-(<http://127.0.0.1:54323>, section Authentication) ou en ligne de commande. Un trigger en fait
-automatiquement le `super_admin` — mais uniquement parce que la table des profils est vide.
+Le tout premier se crée donc hors application, depuis Supabase Studio
+(<http://127.0.0.1:54323>, section Authentication). Un trigger en fait automatiquement le
+`super_admin` — mais uniquement parce que la table des profils est vide.
 
-## Commandes
+> `pnpm db:reset` efface tous les comptes. Il faut recréer le premier après chaque reset.
+
+### Commandes
 
 | Commande | Effet |
 |---|---|
 | `pnpm db:start` / `db:stop` | démarre ou arrête la stack Supabase locale |
 | `pnpm db:reset` | rejoue toutes les migrations depuis zéro |
-| `pnpm db:test` | tests pgTAP (invariants de rôles, RLS, audit) |
+| `pnpm db:test` | tests pgTAP (rôles, RLS, audit, confidentialité) |
 | `pnpm db:types` | régénère `apps/web/types/database.ts` |
 | `pnpm dev` / `build` | application web |
 | `pnpm typecheck` / `lint` / `test` | qualité |
+| `uv run python -m mycelio [dept…]` | construit la grille et ses attributs |
+| `uv run python -m mycelio.score` | recalcule les scores |
 
 Après toute migration touchant au schéma, relancer `pnpm db:types` : la CI compare le fichier
 généré à celui du dépôt et échoue s'ils divergent.
 
-## Pipeline géospatial
-
-Hors ligne, jamais déployé. Il construit la table `cells` que l'application se contente de lire.
-
-```bash
-cd pipeline
-uv sync
-uv run python -m mycelio        # tous les départements de app_settings
-uv run python -m mycelio 31     # un seul
-uv run python -m mycelio.score  # recalcule les scores de poussée
-```
-
-Compter une dizaine de minutes au premier passage (36 Mo de MNT, 196 000 chemins récupérés en
-WFS), une minute ensuite : tout est mis en cache dans `pipeline/data/`, hors du dépôt.
-
-État actuel : **86 137 mailles en résolution H3 9**, soit environ 280 m de largeur (31 : 21 248,
-81 : 27 626, 11 : 37 263). Les mailles sous 20 % de couvert boisé sont écartées : sans hôte
-mycorhizien, leur score est structurellement nul. Étendre l'emprise demande d'ajouter les
-millésimes IGN du département dans `VINTAGES` (`pipeline/mycelio/__main__.py`).
-
-À cette résolution, trois contraintes ont imposé des choix de schéma plutôt que de simples
-réglages :
-
-- **Volumétrie.** Une ligne par (maille, espèce, jour) donnait 110 Mo pour 838 000 lignes en
-  résolution 8 ; en résolution 9 cela aurait fait environ 770 Mo, au-delà des 500 Mo du palier
-  gratuit. Les huit jours tiennent désormais dans un tableau : 689 000 lignes, 121 Mo, base
-  totale à 172 Mo.
-- **Charge utile.** La carte n'interroge plus que sa fenêtre, et le serveur agrège sur le parent
-  en résolution 7 sous le zoom 11 — 90 000 hexagones de 280 m sont sous-pixel à l'échelle d'un
-  département.
-- **RLS.** Les appels de fonction dans les politiques sont enveloppés dans un sous-select
-  (`(select public.can('x'))`), sans quoi Postgres les réévalue à chaque ligne : sur 86 000
-  mailles, une requête de 22 ms en prenait près de 1 000.
-
-### Un écart au cahier des charges, assumé
-
-**BD ALTI 25 m au lieu du RGE ALTI 5 m.** Sur des mailles de 740 m, le 5 m est du détail qu'on
-moyenne de toute façon, et il produit des dérivées nettement plus bruitées : pente et courbure
-amplifient le bruit du MNT. Le 25 m donne un terrain mieux tenu pour un centième du volume.
-
-## Ce qu'il faut savoir avant de toucher au code
-
-Quatre règles portent l'essentiel de la sécurité du projet. Les enfreindre ne casse aucun test
-de compilation, mais ouvre des trous réels.
-
-**1. Le code ne teste jamais un rôle, seulement une permission.** Il existe une seule fonction
-`can()`, en SQL comme en TypeScript, et les deux lisent la même table `role_permissions`.
-Écrire `if (role === 'admin')` viderait de son sens la matrice éditable de `/admin/droits`.
-
-**2. Le client `service_role` ne sert qu'aux opérations `auth.admin.*`.** Il n'a pas
-d'`auth.uid()`, donc les gardes qui protègent les rôles y sont désarmées. La base applique
-elle-même cette règle : `service_role` n'a aucun privilège d'écriture sur `public`. Si une
-écriture échoue de ce côté, la réponse n'est pas d'ajouter un `GRANT`.
-
-**3. Le rôle d'un compte n'est jamais lu depuis ses métadonnées.** Tout compte naît `viewer`
-(sauf le premier). Le rôle est ensuite posé par une mise à jour distincte, avec la session de
-l'administrateur, qui traverse donc les gardes sous une vraie identité.
-
-**4. `proxy.ts` n'est pas une frontière de sécurité.** Il rafraîchit la session et refoule les
-visiteurs anonymes, rien de plus. L'autorisation réelle vit dans `requirePermission()` et, en
-dernier ressort, dans la RLS.
-
-Le reste des pièges est documenté à l'endroit du code concerné.
+---
 
 ## Architecture
 
 ```
-apps/web/          Next.js 16, App Router, Tailwind v4, shadcn/ui
-  lib/auth/        can(), session, gardes de route
-  lib/supabase/    clients navigateur, serveur, admin
-supabase/
-  migrations/      schéma, fonctions, triggers, RLS, seed
-  tests/           pgTAP
-pipeline/          Python, phase 2 — jamais déployé
+mycelio/
+├── apps/web/                    Next.js 16, App Router, React 19
+│   ├── app/
+│   │   ├── (auth)/connexion     e-mail + mot de passe, pas d'inscription
+│   │   ├── (app)/carte          carte plein cadre — l'écran principal
+│   │   ├── (app)/journal        carnet de sorties
+│   │   ├── (app)/reglages       profil, mot de passe
+│   │   ├── (app)/admin/         comptes, droits, paramètres, espèces, audit
+│   │   └── api/                 cells, forecast, species, cell/[h3], outings/gpx
+│   ├── components/
+│   │   ├── map/                 MapLibre, panneau d'inspection, carotte de terrain
+│   │   ├── admin/               matrice de droits, formulaire générique
+│   │   └── shell/               navigation, thème, bandeau de sécurité
+│   ├── lib/
+│   │   ├── auth/                can(), session, gardes de route
+│   │   ├── map/                 fonds IGN, reconstruction des hexagones
+│   │   ├── supabase/            clients navigateur, serveur, admin
+│   │   └── terrain/             règles de conseil de terrain
+│   └── proxy.ts                 rafraîchissement de session (ex-middleware)
+├── pipeline/                    Python 3.12, hors ligne, jamais déployé
+│   └── mycelio/
+│       ├── grid.py              maillage H3
+│       ├── forest.py            BD Forêt → essence, part boisée, lisière
+│       ├── terrain.py           MNT → pente, exposition, TPI, TWI, courbure
+│       ├── soil.py              SoilGrids → pH, argile, carbone
+│       ├── hydro.py             BD TOPO → distances eau et chemins
+│       ├── protected.py         espaces protégés → masquage réglementaire
+│       ├── weather.py           Open-Meteo → pluie, sol, amplitude
+│       ├── scoring.py           moteur de règles expertes
+│       └── upload.py            chargement par COPY
+├── supabase/
+│   ├── migrations/              schéma, fonctions, triggers, RLS, seeds
+│   └── tests/                   pgTAP
+└── .github/workflows/           CI + scoring quotidien
 ```
 
-Aucun calcul géospatial ne doit apparaître dans `apps/web` : tout est précalculé hors ligne par
-le pipeline. Un `import` de `rasterio` ou de `shapely` côté web serait une erreur
-d'architecture.
+Aucun calcul géospatial ne doit apparaître dans `apps/web` : tout est précalculé hors ligne. Un
+`import` de `rasterio` ou de `shapely` côté web serait une erreur d'architecture.
 
-## Données
+### Pile technique
 
-Toutes les sources sont ouvertes, avec licence vérifiée : IGN BD Forêt, RGE ALTI et BD TOPO
-(Etalab 2.0), SoilGrids et Open-Meteo (CC-BY 4.0), GBIF, OpenStreetMap (ODbL). Leur attribution
-est une obligation de licence : elle sera affichée dès que la carte affichera leurs données.
+| Couche | Choix | Pourquoi |
+|---|---|---|
+| Framework | Next.js 16, React 19, TypeScript strict | Server Components pour l'admin, route handlers pour l'API |
+| UI | Tailwind v4 (CSS-first, pas de `tailwind.config.js`), shadcn/ui | thème piloté par variables CSS |
+| Carte | MapLibre GL **5.24** + react-map-gl 8 | licence BSD, aucun jeton, aucun quota |
+| Hexagones | h3-js côté client | on transporte des index, le navigateur reconstruit les polygones |
+| Base | Supabase — Postgres 17, PostGIS, Auth, RLS | palier gratuit : 500 Mo, 50 000 MAU |
+| Pipeline | Python 3.12 + uv | geopandas, rasterio, pysheds, h3, psycopg |
+| Cron | GitHub Actions, 5 h UTC | son écriture quotidienne empêche la mise en veille de Supabase |
+
+> **MapLibre reste bloqué en 5.x.** `@vis.gl/react-maplibre` 8.1.1 lit `map.transform`, propriété
+> supprimée en MapLibre 6, mais déclare un pair permissif `>=4.0.0` : pnpm installe la 6 sans
+> avertissement, et la carte s'affiche puis refuse tout déplacement. À vérifier avant toute mise
+> à jour.
+
+---
+
+## Modèles et sources de données
+
+### Sources géographiques et météo
+
+Toutes ouvertes, licences vérifiées. L'attribution est une obligation de licence, pas une
+décoration : elle est affichée sur la carte et listée dans `/admin/donnees`.
+
+| Source | Usage | Accès | Licence |
+|---|---|---|---|
+| **IGN BD Forêt V2** | essence dominante, part boisée, lisières | téléchargement départemental `.7z` | Etalab 2.0 |
+| **IGN BD ALTI V2 25 m** | altitude, pente, exposition, TWI, TPI, courbure | téléchargement départemental `.7z` | Etalab 2.0 |
+| **IGN BD TOPO V3** | cours d'eau, chemins, espaces protégés | WFS `data.geopf.fr`, paginé | Etalab 2.0 |
+| **Fonds IGN WMTS** | Plan IGN v2, photo aérienne | `data.geopf.fr/wmts`, sans clé depuis 2021 | Etalab 2.0 |
+| **SoilGrids (ISRIC)** | pH, argile, carbone organique, horizon 5–15 cm | WCS, projection Homolosine | CC-BY 4.0 |
+| **Open-Meteo** | pluie, humidité du sol 7–28 cm, amplitude thermique | API sans clé | CC-BY 4.0 |
+| **geo.api.gouv.fr** | contours communaux, fusionnés en départements | API | Etalab 2.0 |
+
+Points d'attention accumulés sur ces sources, tous documentés dans le code concerné :
+
+- La **BD Forêt V2** n'apparaît qu'au-delà de la huitième page du flux de téléchargement IGN. La
+  recherche initiale n'avait trouvé que la V1 — inventaire de 1996, sans châtaignier.
+- Les shapefiles **V1 sont en Latin-1, les V2 en UTF-8**. Se tromper ne lève aucune erreur : on
+  obtient des essences mal décodées qui ne correspondent plus à rien, donc des mailles sans hôte.
+- La clé de cache des jeux IGN porte **version et millésime**, sinon un changement de version
+  ressert silencieusement l'ancien fichier.
+- **SoilGrids** code l'absence de sol par `0` autant que par des valeurs négatives. Ne filtrer
+  que le négatif laisse passer des sols « à pH 0 ».
+- **PostgREST plafonne** ses réponses ; le dépassement tronque sans erreur (`max_rows` relevé à
+  6 000 dans `config.toml`).
+
+### Modèle de scoring
+
+Phase A du cahier des charges — **règles expertes, aucun apprentissage automatique pour
+l'instant**. La phase 7 (LightGBM) attend une première saison de sorties enregistrées ; sans
+absences réelles, un modèle appris n'apprendrait que où les gens se promènent.
+
+```
+score = habitat × phénologie × météo
+```
+
+Les trois facteurs sont dans [0, 1] et se multiplient : chacun peut annuler le score à lui seul.
+Sans hôte mycorhizien compatible, il n'y a pas de cèpe, quelle que soit la météo — et ce seul
+facteur élimine 60 à 70 % de la carte.
+
+- **habitat** — appariement hôte, cloche sur le pH, plateau d'altitude, indice d'humidité
+- **phénologie** — fenêtre saisonnière circulaire, correction d'altitude (~7 jours par 100 m),
+  cloche sur la température du sol
+- **météo** — cloche sur la pluie cumulée décalée du délai propre à l'espèce, humidité de
+  l'horizon 7–28 cm, amplitude thermique nocturne
+
+`pipeline/mycelio/scoring.py` ne contient **que des formes de courbes** : aucune constante
+mycologique n'y est écrite. Les huit espèces, leurs hôtes, pH, altitudes, fenêtres et délais
+vivent dans la table `species`, éditable depuis `/admin/especes`. Les poids sont dans
+`/admin/scoring`. C'est le levier de calibration après les premières sorties.
+
+Contrôle de plausibilité, fin juillet : le cèpe d'été domine, la tête de nègre suit — c'est elle
+qui démarre en août — et toutes les espèces d'automne sont à zéro.
+
+### Aucune API de modèle de langage
+
+Le projet n'appelle **aucun LLM**, ni en production ni au build. Les conseils de terrain sont
+produits par des règles déterministes en TypeScript (`lib/terrain/advice.ts`) : gratuit,
+instantané, reproductible et débuggable — et surtout incapable d'inventer une affirmation sur la
+comestibilité.
+
+---
+
+## Sécurité alimentaire
+
+Règle absolue : **l'application ne détermine jamais une espèce et n'affirme jamais qu'un
+champignon est comestible.** Aucune identification par photo, aucun classifieur d'image, même
+« à titre indicatif ». La confusion entre un cèpe et une amanite phalloïde tue.
+
+Ce qui est en place :
+
+- **Bandeau permanent et non refermable** sur la carte, rendu côté serveur pour ne dépendre ni
+  de MapLibre ni de JavaScript.
+- **Confusions dangereuses par espèce**, affichées en rouge dans le panneau d'inspection.
+- **Tricholome équestre** (bidaou) : interdit à la vente depuis 2005, point sensible localement.
+- Rappel que **morilles et bolets ne se consomment jamais crus**, et numéro du centre antipoison
+  régional.
+- **Rappel légal** : les champignons appartiennent au propriétaire du terrain (art. 547 du Code
+  civil), et ~75 % de la forêt française est privée.
+
+### Masquage réglementaire
+
+Les mailles intersectant une **réserve biologique intégrale** ou un **cœur de parc national**
+sont **retirées**, pas signalées : elles n'apparaissent pas sur la carte et l'API refuse de les
+inspecter, même en devinant leur index. Une application qui désigne un bon coin dans une réserve
+reste une application qui envoie enfreindre la réglementation, bandeau ou pas.
+
+Le filtre est posé dans les fonctions de requête en base, pas dans le composant de carte : c'est
+le seul endroit qui garantit qu'aucun chemin d'accès ne les expose.
+
+La liste des catégories masquées est dans `app_settings.pipeline.restricted_categories`. Elle
+contient par défaut les deux que nomme le cahier des charges. La cueillette est aussi interdite
+dans la plupart des **réserves naturelles nationales**, mais la réglementation y varie d'une
+réserve à l'autre : les ajouter est une décision à prendre en connaissance de cause. Modifier
+cette liste impose de rejouer le pipeline.
+
+---
+
+## Ce qu'il faut savoir avant de toucher au code
+
+Ces règles portent l'essentiel de la sécurité et de la performance du projet. Les enfreindre ne
+casse aucun test de compilation, mais ouvre des trous réels.
+
+**1. Le code ne teste jamais un rôle, seulement une permission.** Une seule fonction `can()`, en
+SQL comme en TypeScript, et les deux lisent la même table `role_permissions`. Écrire
+`if (role === 'admin')` viderait de son sens la matrice éditable de `/admin/droits`.
+
+**2. Toute fonction appelée dans une politique RLS s'enveloppe dans un sous-select.**
+`(select public.can('x'))`, jamais `public.can('x')`. Même déclarée `STABLE`, Postgres la
+réévalue à chaque ligne dans une politique : sur 86 000 mailles, une requête de 22 ms en prenait
+près de 1 000.
+
+**3. Le client `service_role` ne sert qu'aux opérations `auth.admin.*`.** Il n'a pas
+d'`auth.uid()`, donc les gardes qui protègent les rôles y sont désarmées. La base applique
+elle-même la règle : `service_role` n'a aucun privilège d'écriture sur `public`. Si une écriture
+échoue de ce côté, la réponse n'est pas d'ajouter un `GRANT`.
+
+**4. Le rôle d'un compte n'est jamais lu depuis ses métadonnées.** Tout compte naît `viewer`
+(sauf le premier). Le rôle est posé par une mise à jour distincte, sous la session de
+l'administrateur, qui traverse donc les gardes avec une vraie identité.
+
+**5. `proxy.ts` n'est pas une frontière de sécurité.** Il rafraîchit la session et refoule les
+visiteurs anonymes, rien de plus. L'autorisation vit dans `requirePermission()` et, en dernier
+ressort, dans la RLS. En App Router, un contrôle posé sur le seul `layout.tsx` ne couvre pas les
+pages, qui se rendent indépendamment lors des navigations douces.
+
+**6. Les admins ne voient pas les relevés privés des autres.** Aucune politique de `outings` ou
+`finds` n'appelle `can()`. Un super-pouvoir sur les comptes n'est pas un super-pouvoir sur les
+spots — le test pgTAP 08 le vérifie explicitement.
+
+**7. L'exposition n'est jamais stockée en degrés.** 359° et 1° sont voisins sur le terrain mais
+aux antipodes pour un modèle : on stocke `northness` et `eastness`, et la recomposition n'a lieu
+qu'à l'affichage.
+
+**8. Le score affiché est un percentile de la fenêtre visible**, jamais une valeur absolue. En
+août sec, toutes les valeurs s'effondrent et une échelle absolue rendrait la carte uniformément
+pâle, donc inutilisable.
+
+**9. `dist_path_m` sert à l'entraînement, pas à l'inférence.** Le modèle y absorbera le biais
+d'observation — on trouve des champignons près des chemins surtout parce qu'on n'y va pas
+autrement. À l'inférence, la variable sera fixée à sa médiane, ce qui retire le biais au lieu de
+le propager.
+
+**10. Une sortie bredouille est une donnée, pas un échec.** C'est la seule source d'absences
+réelles du projet, et la phase 7 en dépend. L'interface doit la rendre aussi rapide à noter
+qu'une trouvaille.
+
+Le reste des pièges est documenté à l'endroit du code concerné.
+
+---
+
+## Tests et CI
+
+- **Tests pgTAP** (`pnpm db:test`) : invariants de rôles, RLS de toutes les tables, immuabilité
+  du journal d'audit, confidentialité du carnet. Le fichier `01_rls_enabled.sql` vérifie par
+  introspection que **toute** table de `public` est sous RLS — une table ajoutée sans politique
+  fait échouer la CI.
+- **Tests unitaires Vitest** sur `can()`, la seule logique d'autorisation pure.
+- **CI GitHub Actions** : migrations, pgTAP, dérive des types générés, `tsc`, `eslint`,
+  `vitest`, `next build`.
+- **Scoring quotidien** à 5 h UTC (`daily-score.yml`), actif dès que le dépôt est sur GitHub avec
+  un `DATABASE_URL` en secret.
+
+---
+
+## Direction artistique
+
+Ancrage : la carte topographique IGN et le relevé forestier, lus à travers une interface
+contemporaine. **La carte est l'application** — elle occupe tout le viewport et tout le reste
+flotte au-dessus, dans des surfaces translucides. Mobile first, mode sombre par défaut (l'app se
+consulte à 6 h du matin dans une voiture), mode clair de plein droit.
+
+Palette : `#12140F` fond, `#1E2118` surfaces, `#2A3324` bordures, `#9FB08A` texte secondaire,
+`#E8E6DD` texte principal, `#C89B3C` accent unique, `#B23A3A` avertissements **uniquement**.
+Typographie : Bricolage Grotesque en display, Public Sans en texte, IBM Plex Mono pour **toute
+donnée chiffrée**. Les trois viennent de `next/font/google`, qui les auto-héberge : aucune
+requête externe.
+
+Deux pièges de contraste, corrigés dans `globals.css` : `#B23A3A` ne donne que 3,2:1 sur le fond
+sombre (d'où une variante éclaircie pour le texte), et l'ocre tombe à 2:1 sur fond clair (d'où un
+ocre assombri en mode clair).
+
+**Élément signature** : la *carotte de terrain* du panneau d'inspection — une bande stratifiée où
+la densité des houppiers suit la part boisée, la surface s'incline selon la pente, l'épaisseur de
+l'humus suit le carbone organique, la teinte de l'horizon va du brun acide au gris calcaire selon
+le pH, et son grain suit le taux d'argile. Chaque trait encode une donnée réelle.
+
+---
+
+## Écarts assumés au cahier des charges
+
+| Prévu | Retenu | Raison |
+|---|---|---|
+| Next.js 15, Tailwind v3 | Next 16, Tailwind v4 | versions courantes ; config CSS-first, plus de `tailwind.config.js` |
+| `@supabase/auth-helpers` | `@supabase/ssr` | le premier est déprécié |
+| RGE ALTI 5 m | BD ALTI 25 m | sur des mailles de 280 m, le 5 m est du détail moyenné et plus bruité |
+| Table `invitations` | création directe des comptes | pas de service d'e-mail, et un cercle de quelques personnes |
+| `access.registration_mode` | `enable_signup = false` | il n'y a plus d'inscription du tout |
+| `forecast` : une ligne par jour | tableau de 8 scores | 770 Mo projetés contre 500 autorisés ; 121 Mo au final |
+| `app_settings` sans `options` | colonne `options` ajoutée | sans elle, une clé énumérée obligerait à coder ses valeurs dans le front |
+| Opacité 0,35–0,85 | 0,15–0,50 | à 0,85 le fond IGN disparaît là où il faut lire les chemins d'accès |

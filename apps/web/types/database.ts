@@ -136,6 +136,8 @@ export type Database = {
           h3_r7: string | null
           hosts: string[]
           northness: number | null
+          restricted: boolean
+          restriction: string | null
           slope_pct: number | null
           soil_clay_pct: number | null
           soil_ph: number | null
@@ -161,6 +163,8 @@ export type Database = {
           h3_r7?: string | null
           hosts?: string[]
           northness?: number | null
+          restricted?: boolean
+          restriction?: string | null
           slope_pct?: number | null
           soil_clay_pct?: number | null
           soil_ph?: number | null
@@ -186,6 +190,8 @@ export type Database = {
           h3_r7?: string | null
           hosts?: string[]
           northness?: number | null
+          restricted?: boolean
+          restriction?: string | null
           slope_pct?: number | null
           soil_clay_pct?: number | null
           soil_ph?: number | null

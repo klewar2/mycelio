@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import db, forest, grid, hydro, soil, terrain, upload, zonal
+from . import db, forest, grid, hydro, protected, soil, terrain, upload, zonal
 from .config import WORK, ensure_dirs
 
 # Jeux de données IGN, par département.
@@ -107,9 +107,20 @@ def run(dept: str) -> int:
     hydro_attrs = hydro.distances(cells, dept)
     print(f"  eau et chemins  {len(hydro_attrs):>6} mailles   {time.time() - step:5.1f}s")
 
+    # --- espaces protégés ----------------------------------------------------
+    step = time.time()
+    categories = db.get_setting("pipeline.restricted_categories")
+    areas = protected.load_protected(cells, dept, list(categories))
+    protected_attrs = protected.mark_restricted(cells, areas)
+    masked = int(protected_attrs["restricted"].sum())
+    print(
+        f"  protégé         {masked:>6} mailles masquées ({len(areas)} espaces)"
+        f"   {time.time() - step:5.1f}s"
+    )
+
     # --- assemblage ----------------------------------------------------------
     frame = upload.assemble(
-        dept, forest_attrs, terrain_attrs, soil_attrs, hydro_attrs, threshold
+        dept, forest_attrs, terrain_attrs, soil_attrs, hydro_attrs, protected_attrs, threshold
     )
     inserted = upload.load(frame, dept)
 

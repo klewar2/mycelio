@@ -27,7 +27,10 @@ export async function GET(
     .eq("h3_index", h3)
     .single();
 
-  if (error || !cell) {
+  // Une maille protégée est traitée comme inexistante, et non signalée comme protégée : la
+  // carte ne la rend pas, l'API ne doit pas non plus permettre de l'inspecter en devinant son
+  // index. Le masquage réglementaire n'aurait aucun sens s'il ne tenait qu'à l'affichage.
+  if (error || !cell || cell.restricted) {
     return NextResponse.json({ error: "maille inconnue" }, { status: 404 });
   }
 
