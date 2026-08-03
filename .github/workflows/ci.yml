@@ -14,15 +14,15 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
       - name: Démarrer Supabase
         run: pnpm exec supabase start
 
-      # Le critère de validation de la phase 1 se joue ici : un admin ne peut pas supprimer le
-      # dernier super_admin, et la RLS est active partout.
+      # Le critère de validation de la phase 1 se joue ici : le dernier administrateur actif ne
+      # peut être ni supprimé, ni rétrogradé, ni désactivé, et la RLS est active partout.
       - name: Tests pgTAP
         run: pnpm exec supabase test db
 
@@ -41,7 +41,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 

@@ -24,19 +24,24 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const ROLES = ["super_admin", "admin", "member", "viewer"] as const;
+export const ROLES = ["admin", "ecriture", "lecture"] as const;
 export type AppRole = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  super_admin: "Super-admin",
   admin: "Admin",
-  member: "Membre",
-  viewer: "Lecteur",
+  ecriture: "Écriture",
+  lecture: "Lecture",
+};
+
+export const ROLE_HINTS: Record<AppRole, string> = {
+  admin: "Comptes, droits, paramètres, espèces et journal, en plus de l'écriture.",
+  ecriture: "Consulte la carte et tient son carnet de sorties.",
+  lecture: "Consulte la carte, sans rien enregistrer.",
 };
 
 /**
- * Les rôles du plus faible au plus fort. Cet ordre n'est pas contraint en base — le super_admin
- * compose la matrice comme il veut — mais c'est le défaut, et c'est ce que la lecture en coupe
- * topographique de /admin/roles donne à voir.
+ * Les rôles du plus faible au plus fort. Cet ordre n'est pas contraint en base — la matrice se
+ * compose comme on veut — mais c'est le défaut, et c'est ce que la lecture en coupe topographique
+ * de /admin/droits donne à voir.
  */
-export const ROLES_ASCENDING: AppRole[] = ["viewer", "member", "admin", "super_admin"];
+export const ROLES_ASCENDING: AppRole[] = ["lecture", "ecriture", "admin"];

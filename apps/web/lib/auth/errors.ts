@@ -5,13 +5,14 @@
  * base a refusé. Un message doit donc dire ce qui s'est passé ET quoi faire ensuite.
  */
 const MESSAGES: Record<string, string> = {
-  MYC_LAST_SUPER_ADMIN:
-    "Il doit rester au moins un super-admin actif. Nomme d'abord quelqu'un d'autre.",
-  MYC_SUPER_ADMIN_PROTECTED: "Seul un super-admin peut gérer un autre super-admin.",
-  MYC_SELF_ROLE_CHANGE: "Tu ne peux pas modifier ton propre rôle. Demande à un super-admin.",
+  MYC_LAST_ADMIN:
+    "Il doit rester au moins un administrateur actif. Nomme d'abord quelqu'un d'autre.",
+  MYC_ADMIN_PROTECTED: "Seul un administrateur peut gérer un autre administrateur.",
+  MYC_SELF_ROLE_CHANGE:
+    "Tu ne peux pas modifier ton propre rôle. Demande à un autre administrateur.",
   MYC_SELF_ACTIVATION: "Tu ne peux pas modifier ta propre activation.",
   MYC_PERMISSION_LOCKED:
-    "Cette permission est indispensable au super-admin : la retirer condamnerait l'administration des droits.",
+    "Cette permission est indispensable à l'administrateur : la retirer condamnerait l'administration des droits.",
   MYC_AUDIT_IMMUTABLE: "Le journal d'audit ne peut être ni modifié ni supprimé.",
   MYC_SETTING_RANGE: "La valeur est hors des bornes autorisées pour ce paramètre.",
   MYC_SETTING_TYPE: "La valeur n'est pas du type attendu pour ce paramètre.",

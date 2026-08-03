@@ -6,7 +6,7 @@ function context(permissions: string[]): SessionContext {
   return {
     userId: "00000000-0000-0000-0000-000000000001",
     email: "test@mycelio.test",
-    profile: { role: "viewer" } as Tables<"profiles">,
+    profile: { role: "lecture" } as Tables<"profiles">,
     permissions: new Set(permissions),
   };
 }
@@ -25,9 +25,12 @@ describe("can", () => {
   });
 
   it("ne déduit rien du rôle porté par le profil", () => {
-    // Le profil dit `viewer`, mais seules les permissions comptent : c'est ce qui permet à la
+    // Le profil dit `lecture`, mais seules les permissions comptent : c'est ce qui permet à la
     // matrice éditable de piloter réellement le comportement.
-    const ctx = { ...context(["admin.users.manage"]), profile: { role: "viewer" } } as SessionContext;
+    const ctx = {
+      ...context(["admin.users.manage"]),
+      profile: { role: "lecture" },
+    } as SessionContext;
     expect(can(ctx, "admin.users.manage")).toBe(true);
   });
 });

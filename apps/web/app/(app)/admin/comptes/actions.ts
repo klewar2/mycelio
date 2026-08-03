@@ -19,13 +19,13 @@ function parseRole(value: FormDataEntryValue | null): AppRole | null {
  *
  * `auth.admin.createUser` passe par service_role, qui n'a pas d'auth.uid() : les gardes
  * relatives à l'acteur y sont désarmées. Le trigger en base refuse donc de lire le rôle depuis
- * les métadonnées et crée systématiquement un `viewer`.
+ * les métadonnées et crée systématiquement un compte en `lecture`.
  *
  * Le rôle demandé est ensuite posé par un UPDATE distinct, avec le client porteur de la session
- * de l'administrateur. Cet UPDATE traverse les gardes sous une vraie identité : un admin qui
- * tente de fabriquer un super_admin est refusé PAR LA BASE.
+ * de l'administrateur. Cet UPDATE traverse les gardes sous une vraie identité : qui n'est pas
+ * administrateur ne peut pas en fabriquer un, et c'est LA BASE qui le refuse.
  *
- * Si cette seconde étape échoue, le compte existe en `viewer` : un état sûr et corrigeable,
+ * Si cette seconde étape échoue, le compte existe en `lecture` : un état sûr et corrigeable,
  * jamais sur-privilégié.
  */
 export async function createAccount(
@@ -62,7 +62,7 @@ export async function createAccount(
     };
   }
 
-  if (role !== "viewer") {
+  if (role !== "lecture") {
     const supabase = await createClient();
     const { error: roleError } = await supabase
       .from("profiles")
@@ -72,7 +72,7 @@ export async function createAccount(
     if (roleError) {
       revalidatePath("/admin/comptes");
       return {
-        error: `Compte créé, mais le rôle n'a pas pu être attribué : ${humanizeDbError(roleError.message)} Le compte reste en lecteur.`,
+        error: `Compte créé, mais le rôle n'a pas pu être attribué : ${humanizeDbError(roleError.message)} Le compte reste en lecture.`,
         success: null,
       };
     }

@@ -11,9 +11,9 @@ import type { Database } from "@/types/database";
  * │ Il ne doit JAMAIS écrire dans une table de `public`.                                      │
  * └───────────────────────────────────────────────────────────────────────────────────────────┘
  *
- * `service_role` n'a pas d'auth.uid(). Les gardes qui protègent les rôles — « un admin ne peut
- * pas nommer un super_admin », « personne ne modifie son propre rôle » — sont relatives à
- * l'acteur et se retrouvent donc silencieusement désarmées sur ce chemin.
+ * `service_role` n'a pas d'auth.uid(). Les gardes qui protègent les rôles — « qui n'est pas
+ * administrateur ne peut pas en nommer un », « personne ne modifie son propre rôle » — sont
+ * relatives à l'acteur et se retrouvent donc silencieusement désarmées sur ce chemin.
  *
  * La base applique déjà cette règle : `service_role` n'a aucun privilège DML sur `public`, une
  * tentative d'écriture échouera. Ce commentaire explique pourquoi, pour que personne ne

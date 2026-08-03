@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROLES_ASCENDING, ROLE_LABELS } from "@/lib/auth/permissions";
+import { ROLES_ASCENDING, ROLE_HINTS, ROLE_LABELS } from "@/lib/auth/permissions";
 import { useServerAction } from "@/lib/use-server-action";
 import { createAccount } from "./actions";
 
@@ -74,7 +74,7 @@ export function CreateAccountDialog() {
 
             <div className="space-y-2">
               <Label htmlFor="new-role">Rôle</Label>
-              <Select name="role" defaultValue="member">
+              <Select name="role" defaultValue="ecriture">
                 <SelectTrigger id="new-role" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -86,10 +86,18 @@ export function CreateAccountDialog() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-muted-foreground text-xs">
-                Nommer un super-admin est réservé aux super-admins, et c&apos;est la base qui le
-                vérifie.
-              </p>
+              {/* Trois rôles tiennent en trois lignes : autant les donner à lire plutôt que
+                  d'envoyer l'administrateur les deviner depuis la matrice. */}
+              <dl className="text-muted-foreground space-y-0.5 text-xs">
+                {ROLES_ASCENDING.map((role) => (
+                  <div key={role} className="flex gap-1.5">
+                    <dt className="text-foreground shrink-0 font-medium">
+                      {ROLE_LABELS[role]}
+                    </dt>
+                    <dd>{ROLE_HINTS[role]}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
 
             {state.error ? (

@@ -29,7 +29,7 @@ export default async function ComptesPage() {
     email: emailById.get(p.id) ?? null,
   }));
 
-  const activeSuperAdmins = rows.filter((p) => p.role === "super_admin" && p.is_active).length;
+  const activeAdmins = rows.filter((p) => p.role === "admin" && p.is_active).length;
 
   return (
     <>
@@ -37,7 +37,7 @@ export default async function ComptesPage() {
         eyebrow="Administration"
         title="Comptes"
         description="Il n'y a pas d'inscription : tu crées les comptes ici et transmets les identifiants."
-        edition={`${rows.length} compte${rows.length > 1 ? "s" : ""} · ${activeSuperAdmins} super-admin${activeSuperAdmins > 1 ? "s" : ""} actif${activeSuperAdmins > 1 ? "s" : ""}`}
+        edition={`${rows.length} compte${rows.length > 1 ? "s" : ""} · ${activeAdmins} admin${activeAdmins > 1 ? "s" : ""} actif${activeAdmins > 1 ? "s" : ""}`}
         action={<CreateAccountDialog />}
       />
 

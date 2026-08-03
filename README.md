@@ -35,7 +35,12 @@ le filtrage GBIF en CC-BY-NC.
 Prérequis : Node 24, pnpm, `uv`, et **Docker en marche** — le CLI Supabase lance toute la stack
 (Postgres 17 + PostGIS, Auth, PostgREST, Studio) dans des conteneurs.
 
+La version exacte est fixée dans `.node-version` — c'est aussi ce que lit la CI. Avec `fnm` (ou
+`nvm`, `asdf`, `volta`), `fnm use` à la racine du dépôt suffit ; `fnm env --use-on-cd` le fait
+automatiquement à chaque `cd`.
+
 ```bash
+fnm use                                         # ou: fnm install (si la version manque)
 pnpm install
 pnpm db:start                                   # affiche les URL et clés locales
 cp apps/web/.env.example apps/web/.env.local    # y coller les clés affichées
@@ -61,8 +66,8 @@ Il n'y a **aucune inscription** : `enable_signup = false`, et il n'existe pas de
 d'inscription. Les comptes sont créés depuis `/admin/comptes`.
 
 Le tout premier se crée donc hors application, depuis Supabase Studio
-(<http://127.0.0.1:54323>, section Authentication). Un trigger en fait automatiquement le
-`super_admin` — mais uniquement parce que la table des profils est vide.
+(<http://127.0.0.1:54323>, section Authentication). Un trigger en fait automatiquement un
+`admin` — mais uniquement parce que la table des profils est vide.
 
 > `pnpm db:reset` efface tous les comptes. Il faut recréer le premier après chaque reset.
 
@@ -125,6 +130,30 @@ mycelio/
 
 Aucun calcul géospatial ne doit apparaître dans `apps/web` : tout est précalculé hors ligne. Un
 `import` de `rasterio` ou de `shapely` côté web serait une erreur d'architecture.
+
+### Rôles et droits
+
+Trois rôles, et un seul écran pour les composer.
+
+| Rôle | Ce qu'il fait |
+|---|---|
+| `lecture` | consulte la carte |
+| `ecriture` | + tient son carnet de sorties, exporte ses traces GPX |
+| `admin` | + comptes, droits, paramètres, espèces, journal d'audit |
+
+Ce tableau n'est qu'un **défaut** : la répartition réelle vit dans la table `role_permissions`,
+éditable depuis `/admin/droits`, et c'est elle que lisent `public.can()` en SQL et `can()` en
+TypeScript. Le code ne connaît pas ces trois noms — il ne connaît que des clés de permission.
+C'est ce qui a permis de passer de quatre rôles à trois sans réécrire une seule politique RLS.
+
+Deux invariants sont tenus par des triggers, pas par l'application :
+
+- **Il reste toujours au moins un administrateur actif** (`MYC_LAST_ADMIN`). La garde couvre la
+  suppression, la rétrogradation et la désactivation, et n'a aucune échappatoire : elle
+  s'applique aussi à `service_role` et au tableau de bord Supabase. Supprimer le compte Auth
+  échoue également, par cascade.
+- **Quatre permissions ne peuvent pas être retirées à l'administrateur** (`MYC_PERMISSION_LOCKED`)
+  — sans quoi la matrice permettrait de condamner définitivement l'administration des droits.
 
 ### Pile technique
 
@@ -266,7 +295,7 @@ d'`auth.uid()`, donc les gardes qui protègent les rôles y sont désarmées. La
 elle-même la règle : `service_role` n'a aucun privilège d'écriture sur `public`. Si une écriture
 échoue de ce côté, la réponse n'est pas d'ajouter un `GRANT`.
 
-**4. Le rôle d'un compte n'est jamais lu depuis ses métadonnées.** Tout compte naît `viewer`
+**4. Le rôle d'un compte n'est jamais lu depuis ses métadonnées.** Tout compte naît en `lecture`
 (sauf le premier). Le rôle est posé par une mise à jour distincte, sous la session de
 l'administrateur, qui traverse donc les gardes avec une vraie identité.
 
@@ -275,9 +304,10 @@ visiteurs anonymes, rien de plus. L'autorisation vit dans `requirePermission()` 
 ressort, dans la RLS. En App Router, un contrôle posé sur le seul `layout.tsx` ne couvre pas les
 pages, qui se rendent indépendamment lors des navigations douces.
 
-**6. Les admins ne voient pas les relevés privés des autres.** Aucune politique de `outings` ou
-`finds` n'appelle `can()`. Un super-pouvoir sur les comptes n'est pas un super-pouvoir sur les
-spots — le test pgTAP 08 le vérifie explicitement.
+**6. Les administrateurs ne voient pas les relevés privés des autres.** Aucune politique de
+`outings` ou `finds` n'appelle `can()`. Un super-pouvoir sur les comptes n'est pas un
+super-pouvoir sur les spots — le test pgTAP 08 le vérifie explicitement, sur un acteur qui
+détient pourtant *toutes* les permissions de la matrice.
 
 **7. L'exposition n'est jamais stockée en degrés.** 359° et 1° sont voisins sur le terrain mais
 aux antipodes pour un modèle : on stocke `northness` et `eastness`, et la recomposition n'a lieu
@@ -347,6 +377,7 @@ le pH, et son grain suit le taux d'argile. Chaque trait encode une donnée réel
 | RGE ALTI 5 m | BD ALTI 25 m | sur des mailles de 280 m, le 5 m est du détail moyenné et plus bruité |
 | Table `invitations` | création directe des comptes | pas de service d'e-mail, et un cercle de quelques personnes |
 | `access.registration_mode` | `enable_signup = false` | il n'y a plus d'inscription du tout |
+| 4 rôles (`viewer` → `super_admin`) | 3 rôles (`lecture`, `ecriture`, `admin`) | la délégation partielle de l'administration ne protégeait de personne sur un cercle de quelques amis |
 | `forecast` : une ligne par jour | tableau de 8 scores | 770 Mo projetés contre 500 autorisés ; 121 Mo au final |
 | `app_settings` sans `options` | colonne `options` ajoutée | sans elle, une clé énumérée obligerait à coder ses valeurs dans le front |
 | Opacité 0,35–0,85 | 0,15–0,50 | à 0,85 le fond IGN disparaît là où il faut lire les chemins d'accès |

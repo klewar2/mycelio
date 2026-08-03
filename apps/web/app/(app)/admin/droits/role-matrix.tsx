@@ -10,7 +10,7 @@ import { togglePermission, type ActionState } from "./actions";
 export type MatrixPermission = { key: string; label: string; category: string };
 
 /**
- * Retirer l'une de ces permissions au super_admin condamnerait l'administration des droits :
+ * Retirer l'une de ces permissions à l'administrateur condamnerait l'administration des droits :
  * un trigger le refuse en base, on le rend visible ici plutôt que de laisser cliquer dans le
  * vide.
  */
@@ -30,11 +30,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 /**
  * La matrice des droits, lue comme une coupe topographique.
  *
- * Les rôles sont strictement emboîtés — viewer ⊂ member ⊂ admin ⊂ super_admin — et c'est
- * exactement ce qu'encode une courbe de niveau : un emboîtement. Chaque colonne est donc une
- * bande d'altitude, dont la teinte monte avec le privilège, et le passage refusé → accordé est
- * souligné d'une ligne de niveau. En parcourant la colonne de ces lignes du regard, on lit le
- * relief des droits.
+ * Les rôles sont strictement emboîtés — lecture ⊂ écriture ⊂ admin — et c'est exactement ce
+ * qu'encode une courbe de niveau : un emboîtement. Chaque colonne est donc une bande d'altitude,
+ * dont la teinte monte avec le privilège, et le passage refusé → accordé est souligné d'une
+ * ligne de niveau. En parcourant la colonne de ces lignes du regard, on lit le relief des droits.
  */
 export function RoleMatrix({
   permissions,
@@ -78,9 +77,9 @@ export function RoleMatrix({
 
   return (
     <div className="space-y-8">
-      {/* En-tête des bandes. Sur mobile il reste visible : sans lui, les quatre colonnes ne
+      {/* En-tête des bandes. Sur mobile il reste visible : sans lui, les trois colonnes ne
           voudraient rien dire. */}
-      <div className="grid grid-cols-4 gap-1 sm:grid-cols-[minmax(0,1fr)_repeat(4,5rem)]">
+      <div className="grid grid-cols-3 gap-1 sm:grid-cols-[minmax(0,1fr)_repeat(3,5.5rem)]">
         <div className="hidden sm:block" />
         {ROLES_ASCENDING.map((role, i) => (
           <div key={role} className="px-1 text-center">
@@ -113,9 +112,9 @@ export function RoleMatrix({
                 return (
                   <li
                     key={permission.key}
-                    className="border-border grid grid-cols-4 items-center gap-1 border-b pb-2 sm:grid-cols-[minmax(0,1fr)_repeat(4,5rem)] sm:border-0 sm:pb-0"
+                    className="border-border grid grid-cols-3 items-center gap-1 border-b pb-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,5.5rem)] sm:border-0 sm:pb-0"
                   >
-                    <div className="col-span-4 min-w-0 sm:col-span-1">
+                    <div className="col-span-3 min-w-0 sm:col-span-1">
                       <p className="text-foreground truncate text-sm">{permission.label}</p>
                       <p
                         data-numeric
@@ -127,7 +126,7 @@ export function RoleMatrix({
 
                     {ROLES_ASCENDING.map((role, i) => {
                       const isGranted = states[i];
-                      const isLocked = role === "super_admin" && LOCKED.has(permission.key);
+                      const isLocked = role === "admin" && LOCKED.has(permission.key);
                       const isContour = i === contourAt;
 
                       return (
@@ -149,8 +148,10 @@ export function RoleMatrix({
                           style={
                             isGranted
                               ? {
-                                  // La teinte monte avec l'altitude de la bande.
-                                  backgroundColor: `color-mix(in oklab, var(--primary) ${18 + i * 16}%, transparent)`,
+                                  // La teinte monte avec l'altitude de la bande. Trois bandes au
+                                  // lieu de quatre : on écarte les paliers pour qu'elles restent
+                                  // distinguables d'un coup d'œil.
+                                  backgroundColor: `color-mix(in oklab, var(--primary) ${20 + i * 22}%, transparent)`,
                                 }
                               : undefined
                           }
@@ -177,7 +178,7 @@ export function RoleMatrix({
 
       <p className="text-muted-foreground text-xs leading-relaxed">
         <Lock className="mr-1 inline size-3" aria-hidden />
-        Ces permissions ne peuvent pas être retirées au super-admin : les lui enlever
+        Ces permissions ne peuvent pas être retirées à l&apos;administrateur : les lui enlever
         condamnerait définitivement l&apos;administration des droits.
       </p>
     </div>

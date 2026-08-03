@@ -9,31 +9,29 @@ create extension if not exists pgtap with schema extensions;
 
 -- Repart d'une base sans compte : ces tests décrivent des invariants, pas l'état courant de
 -- l'instance de développement. session_replication_role neutralise les triggers le temps du
--- nettoyage, sans quoi la garde du dernier super_admin l'empêcherait. Le rollback final annule
--- l'ensemble.
+-- nettoyage, sans quoi la garde du dernier administrateur l'empêcherait. Le rollback final
+-- annule l'ensemble.
 set local session_replication_role = replica;
 delete from public.profiles;
 delete from auth.users;
 set local session_replication_role = origin;
 select plan(8);
 
-select tests.create_user('super@mycelio.test',  'Sylvie') as sa \gset
-select tests.create_user('admin@mycelio.test',  'Adrien') as ad \gset
-select tests.create_user('member@mycelio.test', 'Manon')  as me \gset
-select tests.set_role(:'ad'::uuid, 'admin');
-select tests.set_role(:'me'::uuid, 'member');
+select tests.create_user('admin@mycelio.test',    'Adrien')  as ad \gset
+select tests.create_user('ecriture@mycelio.test', 'Estelle') as ed \gset
+select tests.set_role(:'ed'::uuid, 'ecriture');
 
 -- --------------------------------------------------------------------------
 -- Le trigger écrit, et écrit juste.
 -- --------------------------------------------------------------------------
 
-select tests.authenticate_as(:'sa'::uuid);
-update public.profiles set role = 'viewer' where id = :'me'::uuid;
+select tests.authenticate_as(:'ad'::uuid);
+update public.profiles set role = 'lecture' where id = :'ed'::uuid;
 
 select is(
   (select count(*)::int from public.audit_log
-   where action = 'profiles.update' and target = :'me'
-     and actor_id = :'sa'::uuid),
+   where action = 'profiles.update' and target = :'ed'
+     and actor_id = :'ad'::uuid),
   1,
   'Un changement de rôle est journalisé avec le bon acteur et la bonne cible'
 );
@@ -41,15 +39,15 @@ select is(
 -- tests.set_role a déjà produit une entrée pour ce profil : on vise la plus récente.
 select is(
   (select payload -> 'old' ->> 'role' from public.audit_log
-   where action = 'profiles.update' and target = :'me' order by id desc limit 1),
-  'member',
+   where action = 'profiles.update' and target = :'ed' order by id desc limit 1),
+  'ecriture',
   'La charge utile conserve l''état antérieur'
 );
 
 select is(
   (select payload -> 'new' ->> 'role' from public.audit_log
-   where action = 'profiles.update' and target = :'me' order by id desc limit 1),
-  'viewer',
+   where action = 'profiles.update' and target = :'ed' order by id desc limit 1),
+  'lecture',
   'La charge utile conserve le nouvel état'
 );
 
@@ -59,12 +57,12 @@ select is(
 
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', true); end $$;
-select tests.authenticate_as(:'ad'::uuid);
+select tests.authenticate_as(:'ed'::uuid);
 
 select is(
   (select count(*)::int from public.audit_log),
   0,
-  'Un admin ne lit pas le journal d''audit'
+  'Un compte sans la permission d''audit ne lit pas le journal'
 );
 
 -- --------------------------------------------------------------------------
@@ -79,11 +77,11 @@ select throws_ok(
 
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', true); end $$;
-select tests.authenticate_as(:'sa'::uuid);
+select tests.authenticate_as(:'ad'::uuid);
 
 select cmp_ok(
   (select count(*)::int from public.audit_log), '>', 0,
-  'Un super_admin lit le journal d''audit'
+  'Un administrateur lit le journal d''audit'
 );
 
 reset role;
