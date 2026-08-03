@@ -25,6 +25,8 @@ function readSpecies(formData: FormData): TablesInsert<"species"> {
     slug: String(formData.get("slug") ?? "").trim(),
     scientific_name: String(formData.get("scientific_name") ?? "").trim(),
     common_name_fr: String(formData.get("common_name_fr") ?? "").trim(),
+    // Vide = l'espèce s'affiche seule sur la carte, sous son propre nom.
+    family: String(formData.get("family") ?? "").trim() || null,
     host_codes: hosts,
     ph_min: num(formData, "ph_min"),
     ph_max: num(formData, "ph_max"),

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Mycélio">
+  <!--
+    Une maille hexagonale, et un champignon dedans : les deux seules choses que l'application
+    manipule. La maille H3 est la brique de tout le modèle, et le carnet de sorties comme la
+    carte n'existent que pour ce qui pousse à l'intérieur.
+
+    Silhouette pleine plutôt que trait : à 16 px, un contour d'un pixel et demi disparaît dans
+    l'antialiasing des onglets. L'ocre de spore #C89B3C porte le fond parce qu'il tient aussi
+    bien sur un chrome de navigateur clair que sombre — un aplat sombre se serait fondu dans le
+    mode nuit, un aplat clair dans le mode jour.
+
+    Hexagone pointe en haut : c'est l'orientation sous laquelle les mailles apparaissent sur la
+    carte, à ces latitudes.
+  -->
+  <path fill="#C89B3C" d="M16 0.6 2.7 8.3v15.4L16 31.4l13.3-7.7V8.3z" />
+  <path
+    fill="#12140F"
+    d="M16 8.2c-5 0-8.3 3.4-8.3 6.3 0 1 .8 1.6 2 1.6h12.6c1.2 0 2-.6 2-1.6 0-2.9-3.3-6.3-8.3-6.3z"
+  />
+  <path
+    fill="#12140F"
+    d="M13.7 17.3h4.6v5.2c0 1.7-1 2.7-2.3 2.7s-2.3-1-2.3-2.7z"
+  />
+</svg>

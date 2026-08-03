@@ -5,35 +5,33 @@ import { BASEMAPS, type BasemapId } from "@/lib/map/basemaps";
 import { cn } from "@/lib/utils";
 
 /**
- * Commandes flottantes.
+ * Commandes flottantes — le fond de carte, et rien d'autre.
  *
- * Sur mobile elles sont en bas, dans le pouce, juste au-dessus de la barre d'onglets — jamais
- * en haut, où on ne les atteint pas d'une main.
+ * Le compteur de mailles visibles a disparu d'ici : « 4 312 mailles visibles » est une mesure du
+ * moteur, pas une information de terrain. Personne ne décide rien avec. Ce qui reste utile
+ * pendant un chargement, c'est de savoir qu'il se passe quelque chose — un témoin suffit.
  */
 export function MapControls({
   basemap,
   onBasemapChange,
   loading,
-  count,
 }: {
   basemap: BasemapId;
   onBasemapChange: (id: BasemapId) => void;
   loading: boolean;
-  count: number;
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 lg:inset-x-auto lg:left-0">
-      {/* Sous le bandeau de sécurité, et non en bas : le bas est occupé par le sélecteur
-          d'espèce, le curseur de jour et la barre d'onglets. Les empiler les rendait
-          illisibles sur mobile.
+      {/* Sous le bandeau de sécurité, et non en bas : le bas est occupé par le panneau de
+          lecture et la barre d'onglets.
 
           La marge haute dégage le bandeau de sécurité replié, plus haut sur mobile parce que
-          le texte y tient sur quatre lignes. Déplier « Précautions » le recouvre
+          le texte y tient sur trois lignes. Déplier « Précautions » le recouvre
           temporairement, ce qui est acceptable : on lit alors l'avertissement, on ne change
           pas de fond de carte. */}
-      <div className="pointer-events-auto mx-3 mt-[calc(max(0.75rem,env(safe-area-inset-top))+10.5rem)] flex flex-col gap-2 lg:mt-24 lg:ml-3 lg:items-start">
-        <div className="surface-float flex items-center gap-1 self-start p-1 lg:self-start">
-          <Layers className="text-muted-foreground mx-2 size-4" aria-hidden />
+      <div className="pointer-events-auto mx-3 mt-[calc(max(0.75rem,env(safe-area-inset-top))+7rem)] flex items-center gap-2 lg:mt-32 lg:ml-3">
+        <div className="surface-float flex items-center gap-1 p-1">
+          <Layers className="text-muted-foreground mx-1.5 size-4" aria-hidden />
           {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => (
             <button
               key={id}
@@ -41,7 +39,7 @@ export function MapControls({
               onClick={() => onBasemapChange(id)}
               aria-pressed={basemap === id}
               className={cn(
-                "h-9 rounded-md px-3 text-xs font-medium transition-colors",
+                "h-8 rounded-md px-2.5 text-xs font-medium transition-colors",
                 basemap === id
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -52,18 +50,12 @@ export function MapControls({
           ))}
         </div>
 
-        <div className="surface-float self-start px-3 py-2 lg:self-start">
-          <p data-numeric className="text-muted-foreground text-xs">
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="size-3 animate-spin" aria-hidden />
-                chargement…
-              </span>
-            ) : (
-              `${count.toLocaleString("fr-FR")} mailles visibles`
-            )}
-          </p>
-        </div>
+        {loading ? (
+          <span className="surface-float text-muted-foreground flex size-9 items-center justify-center">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            <span className="sr-only">Chargement des mailles</span>
+          </span>
+        ) : null}
       </div>
     </div>
   );

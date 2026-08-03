@@ -23,10 +23,11 @@ le filtrage GBIF en CC-BY-NC.
 | 4 | Scoring par règles, cron quotidien | ✅ |
 | 5 | Panneau d'inspection, conseils terrain | ✅ |
 | 6 | Carnet de sorties, export GPX | ✅ |
+| 6 bis | Lecture grand public : familles, échelle en toutes lettres, barre de semaine | ✅ |
 | 7 | LightGBM, validation spatiale | après une saison de terrain |
 
-**Chiffres actuels** — 86 137 mailles H3 en résolution 9 (~280 m de largeur), 8 espèces,
-689 096 scores sur 8 jours, base à 172 Mo.
+**Chiffres actuels** — 86 137 mailles H3 en résolution 9 (~280 m de largeur), 8 espèces
+regroupées en 6 familles, 689 096 scores sur 8 jours, base à 172 Mo.
 
 ---
 
@@ -102,12 +103,13 @@ mycelio/
 │   │   ├── (app)/admin/         comptes, droits, paramètres, espèces, audit
 │   │   └── api/                 cells, forecast, species, cell/[h3], outings/gpx
 │   ├── components/
-│   │   ├── map/                 MapLibre, panneau d'inspection, carotte de terrain
+│   │   ├── map/                 MapLibre, panneau de lecture, inspection, carotte de terrain
 │   │   ├── admin/               matrice de droits, formulaire générique
 │   │   └── shell/               navigation, thème, bandeau de sécurité
 │   ├── lib/
 │   │   ├── auth/                can(), session, gardes de route
-│   │   ├── map/                 fonds IGN, reconstruction des hexagones
+│   │   ├── map/                 fonds IGN, hexagones, familles d'espèces
+│   │   ├── scoring/             paliers nommés — la seule échelle vue par l'utilisateur
 │   │   ├── supabase/            clients navigateur, serveur, admin
 │   │   └── terrain/             règles de conseil de terrain
 │   └── proxy.ts                 rafraîchissement de session (ex-middleware)
@@ -232,6 +234,40 @@ vivent dans la table `species`, éditable depuis `/admin/especes`. Les poids son
 Contrôle de plausibilité, fin juillet : le cèpe d'été domine, la tête de nègre suit — c'est elle
 qui démarre en août — et toutes les espèces d'automne sont à zéro.
 
+### Du score à une phrase
+
+Le score est un indice de faveur dans [0, 1], pas une probabilité calibrée. Affiché tel quel —
+« 14 % » —, il ne se compare à rien pour qui n'a pas écrit le modèle, et se lit spontanément
+comme « une chance sur sept », ce qui est faux. Toute l'interface passe donc par cinq paliers
+nommés, définis une seule fois dans `apps/web/lib/scoring/levels.ts` :
+
+| Score | Palier |
+|---|---|
+| < 0,02 | Très faibles chances |
+| < 0,08 | Faibles chances |
+| < 0,20 | Chances moyennes |
+| < 0,40 | Bonnes chances |
+| ≥ 0,40 | Très bonnes chances |
+
+Les seuils viennent de la distribution réellement observée : médiane vers 0,03, centile 99 vers
+0,23, maximum saisonnier vers 0,45 sur une espèce en pic. Ils se resserrent volontairement vers
+le haut — un « très bon coin » doit rester rare, sans quoi le mot ne veut plus rien dire. C'est
+le premier réglage à revoir après une saison, avec les poids de `/admin/scoring`.
+
+Formulation en **chances** et non en probabilité : c'est vrai, et c'est ce que l'on dit à l'oral.
+
+### Familles
+
+Un débutant ne distingue pas un cèpe d'été d'un cèpe de Bordeaux, et n'a pas à le faire pour
+décider où aller ce week-end. La carte se pilote donc par famille — six pour huit espèces, plus
+une entrée « Tous » — et le score d'une famille est le **maximum** de ses espèces, jamais leur
+moyenne : les trois cèpes se relaient dans la saison, et une moyenne noierait celui qui est en
+pic sous deux qui sont à zéro.
+
+Le regroupement vit dans `species.family`, éditable depuis `/admin/especes` : aucune
+correspondance espèce → famille n'est écrite dans le code. Une espèce sans famille s'affiche
+seule, sous son propre nom.
+
 ### Aucune API de modèle de langage
 
 Le projet n'appelle **aucun LLM**, ni en production ni au build. Les conseils de terrain sont
@@ -250,7 +286,11 @@ champignon est comestible.** Aucune identification par photo, aucun classifieur 
 Ce qui est en place :
 
 - **Bandeau permanent et non refermable** sur la carte, rendu côté serveur pour ne dépendre ni
-  de MapLibre ni de JavaScript.
+  de MapLibre ni de JavaScript. Volontairement **court** — deux phrases, dont la seule qui
+  appelle une action : faire valider la récolte. Quatre lignes permanentes en tête de carte
+  deviennent du mobilier qu'on ne lit plus, et mangeaient un tiers de l'écran d'un téléphone.
+  Le reste — « zones favorables, jamais l'identité », l'absence définitive d'identification par
+  photo — est d'un cran en dessous, dans « Précautions et rappels ».
 - **Confusions dangereuses par espèce**, affichées en rouge dans le panneau d'inspection.
 - **Tricholome équestre** (bidaou) : interdit à la vente depuis 2005, point sensible localement.
 - Rappel que **morilles et bolets ne se consomment jamais crus**, et numéro du centre antipoison
@@ -313,9 +353,13 @@ détient pourtant *toutes* les permissions de la matrice.
 aux antipodes pour un modèle : on stocke `northness` et `eastness`, et la recomposition n'a lieu
 qu'à l'affichage.
 
-**8. Le score affiché est un percentile de la fenêtre visible**, jamais une valeur absolue. En
-août sec, toutes les valeurs s'effondrent et une échelle absolue rendrait la carte uniformément
-pâle, donc inutilisable.
+**8. La COULEUR d'une maille est un percentile de la fenêtre visible ; le TEXTE est absolu.**
+Les deux échelles cohabitent, et c'est délibéré. En août sec, toutes les valeurs s'effondrent :
+une couleur absolue rendrait la carte uniformément pâle, donc inutilisable pour choisir entre
+deux coins. Mais une couleur relative, seule, laisse croire à une bonne journée dès que la carte
+est contrastée. Le panneau de lecture dit donc la valeur absolue en toutes lettres — « faibles
+chances » — pendant que la carte continue de classer. Retirer l'un des deux ramène le défaut de
+l'autre.
 
 **9. `dist_path_m` sert à l'entraînement, pas à l'inférence.** Le modèle y absorbera le biais
 d'observation — on trouve des champignons près des chemins surtout parce qu'on n'y va pas
@@ -325,6 +369,18 @@ le propager.
 **10. Une sortie bredouille est une donnée, pas un échec.** C'est la seule source d'absences
 réelles du projet, et la phase 7 en dépend. L'interface doit la rendre aussi rapide à noter
 qu'une trouvaille.
+
+**11. L'horizon de 8 jours est écrit à trois endroits, qui doivent bouger ensemble.**
+`scoring.forecast_horizon_days` en base, `HORIZON` dans `lib/map/hexagons.ts`, et les huit
+indices explicites de `forecast_in_view`. Cette dernière prend le maximum par indice plutôt que
+de déplier les tableaux : à l'échelle des trois départements, la forme dépliée matérialise
+5,5 millions de lignes contre 689 000, soit 578 ms au lieu de 377 ms sur la vue par défaut — et
+cinq fois plus cher encore sur la vue détaillée.
+
+**12. Aucun écran ne montre un score brut à l'utilisateur.** Ni pourcentage, ni valeur de
+confiance chiffrée : uniquement des paliers nommés (`lib/scoring/levels.ts`). Un nombre entre 0
+et 1 qui n'est pas une probabilité mais qu'on affiche en pourcentage est une affirmation fausse,
+pas une donnée brute. Les administrateurs, eux, gardent les nombres dans `/admin`.
 
 Le reste des pièges est documenté à l'endroit du code concerné.
 
@@ -361,6 +417,18 @@ Deux pièges de contraste, corrigés dans `globals.css` : `#B23A3A` ne donne que
 sombre (d'où une variante éclaircie pour le texte), et l'ocre tombe à 2:1 sur fond clair (d'où un
 ocre assombri en mode clair).
 
+**Le mobilier de la carte tient en deux surfaces.** En haut, le bandeau de sécurité et le choix
+du fond. En bas, dans le pouce, un seul *panneau de lecture* : les familles, le verdict en
+toutes lettres, et la semaine en huit barres. Ces barres remplacent l'ancien curseur de jour —
+même donnée, les huit jours étant déjà chargés, mais un curseur ne montrait rien : glisser de
+J+3 à J+4 changeait des couleurs sans dire si c'était mieux. Un « ? » y ouvre le mode d'emploi
+de la carte, accessible en permanence et non affiché une seule fois au premier lancement : une
+explication qu'on ne peut plus rouvrir n'est pas une explication.
+
+**Icône** : la même maille hexagonale, avec un champignon dedans — les deux seules choses que
+l'application manipule. Silhouette pleine et non un trait : à 16 px, un contour d'un pixel et
+demi disparaît dans l'antialiasing des onglets.
+
 **Élément signature** : la *carotte de terrain* du panneau d'inspection — une bande stratifiée où
 la densité des houppiers suit la part boisée, la surface s'incline selon la pente, l'épaisseur de
 l'humus suit le carbone organique, la teinte de l'horizon va du brun acide au gris calcaire selon
@@ -381,3 +449,7 @@ le pH, et son grain suit le taux d'argile. Chaque trait encode une donnée réel
 | `forecast` : une ligne par jour | tableau de 8 scores | 770 Mo projetés contre 500 autorisés ; 121 Mo au final |
 | `app_settings` sans `options` | colonne `options` ajoutée | sans elle, une clé énumérée obligerait à coder ses valeurs dans le front |
 | Opacité 0,35–0,85 | 0,15–0,50 | à 0,85 le fond IGN disparaît là où il faut lire les chemins d'accès |
+| Sélecteur d'espèce | sélecteur de **famille**, « Tous » par défaut | on cherche des cèpes, pas du *Boletus reticulatus* |
+| Curseur de jour J → J+7 | barre de semaine en huit barres | un curseur ne montre pas où est le bon jour |
+| Score en pourcentage | cinq paliers nommés | le score n'est pas une probabilité : l'afficher en % est faux |
+| Compteur de mailles visibles | supprimé | mesure du moteur, personne ne décide rien avec |

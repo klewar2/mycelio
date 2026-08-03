@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { CircleSlash, Plus, Sprout } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,13 +15,15 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { useServerAction } from "@/lib/use-server-action";
 import { saveOuting } from "@/app/(app)/journal/actions";
-import type { Species } from "./species-picker";
+import { groupByFamily, type Species } from "@/lib/map/families";
 
 /**
  * Enregistrement rapide d'une sortie depuis la carte.
@@ -44,6 +46,11 @@ export function QuickOuting({
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"choix" | "trouvaille">("choix");
+
+  // Groupé par famille, comme la carte : on cherche d'abord « cèpes », et l'espèce précise
+  // n'apparaît qu'en dessous. C'est le seul endroit de l'application où elle est demandée, et
+  // c'est justifié — le carnet est la matière de la phase 7, qui, elle, distingue les espèces.
+  const families = useMemo(() => groupByFamily(species), [species]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -163,10 +170,19 @@ export function QuickOuting({
                       <SelectValue placeholder="Choisir" />
                     </SelectTrigger>
                     <SelectContent>
-                      {species.map((s) => (
-                        <SelectItem key={s.slug} value={String(s.id)}>
-                          {s.common_name_fr}
-                        </SelectItem>
+                      {families.map((family) => (
+                        <SelectGroup key={family.key}>
+                          {/* Une famille d'une seule espèce n'a pas besoin d'un intertitre qui
+                              répète le nom juste en dessous. */}
+                          {family.species.length > 1 ? (
+                            <SelectLabel>{family.label}</SelectLabel>
+                          ) : null}
+                          {family.species.map((s) => (
+                            <SelectItem key={s.slug} value={String(s.id)}>
+                              {s.common_name_fr}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>

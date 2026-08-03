@@ -118,6 +118,12 @@ function SpeciesDialog({
               required
             />
             <Field
+              name="family"
+              label="Famille affichée"
+              hint="Le nom sous lequel la carte regroupe plusieurs espèces — « Cèpes ». Vide : l'espèce s'affiche seule."
+              defaultValue={species?.family}
+            />
+            <Field
               name="host_codes"
               label="Essences hôtes"
               hint="Codes BD Forêt séparés par des virgules."

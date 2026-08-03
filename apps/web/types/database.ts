@@ -451,6 +451,7 @@ export type Database = {
           alt_min_m: number | null
           common_name_fr: string
           dangerous_confusions: string | null
+          family: string | null
           gbif_taxon_key: number | null
           host_codes: string[]
           id: number
@@ -475,6 +476,7 @@ export type Database = {
           alt_min_m?: number | null
           common_name_fr: string
           dangerous_confusions?: string | null
+          family?: string | null
           gbif_taxon_key?: number | null
           host_codes?: string[]
           id?: number
@@ -499,6 +501,7 @@ export type Database = {
           alt_min_m?: number | null
           common_name_fr?: string
           dangerous_confusions?: string | null
+          family?: string | null
           gbif_taxon_key?: number | null
           host_codes?: string[]
           id?: number
@@ -548,7 +551,7 @@ export type Database = {
           east: number
           north: number
           south: number
-          species_slug: string
+          species_slugs: string[]
           west: number
         }
         Returns: {

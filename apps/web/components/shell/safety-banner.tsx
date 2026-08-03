@@ -10,6 +10,12 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Ne pas ajouter de bouton de fermeture, ni de logique de « déjà vu ». Le repli n'expose que
  * les compléments — le message principal reste visible en permanence.
+ *
+ * En revanche il a été RACCOURCI, et c'est un gain de sécurité, pas une concession : quatre
+ * lignes permanentes en tête de carte deviennent du mobilier qu'on ne lit plus, et elles
+ * mangeaient un tiers de l'écran d'un téléphone. Deux phrases directes, dont la seule qui
+ * appelle une action — faire valider la récolte —, ont plus de chances d'être lues. La nuance
+ * « zones favorables, jamais l'identité » descend d'un cran, dans les précautions.
  */
 export async function SafetyBanner() {
   const supabase = await createClient();
@@ -38,9 +44,8 @@ export async function SafetyBanner() {
           aria-hidden
         />
         <p className="text-foreground text-xs leading-relaxed">
-          Mycélio indique des zones favorables, <strong className="font-semibold">jamais</strong>{" "}
-          l&apos;identité ni la comestibilité d&apos;un champignon. Fais valider toute récolte par
-          un pharmacien ou une société mycologique.
+          Mycélio ne dit <strong className="font-semibold">jamais</strong> si un champignon se
+          mange. Fais valider toute récolte par un pharmacien ou une société mycologique.
         </p>
       </div>
 
@@ -49,6 +54,11 @@ export async function SafetyBanner() {
           Précautions et rappels
         </summary>
         <div className="text-muted-foreground mt-2 ml-7 space-y-2 text-[0.6875rem] leading-relaxed">
+          <p>
+            L&apos;application indique des zones favorables, jamais l&apos;identité d&apos;un
+            champignon. Aucune reconnaissance par photo n&apos;existe ici, et il n&apos;en
+            existera pas : la confusion entre un cèpe et une amanite phalloïde tue.
+          </p>
           {local ? <p style={{ color: "var(--destructive)" }}>{local}</p> : null}
           <p>
             Les morilles et les bolets ne se consomment <strong>jamais crus</strong>, ni même

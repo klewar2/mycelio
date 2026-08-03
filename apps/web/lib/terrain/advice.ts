@@ -226,5 +226,7 @@ function hostedSpecies(hosts: string[]): string {
   if (set.has("pin")) candidates.push("lactaire délicieux");
   if (set.has("sapin") || set.has("conifere")) candidates.push("girolles et pied-de-mouton");
   if (candidates.length === 0) return "hôte générique, sans espèce cible privilégiée";
-  return `hôte possible pour ${candidates.slice(0, 2).join(" et ")}`;
+  // Virgule et non « et » : les candidats contiennent déjà des « et » internes, et
+  // « lactaire délicieux et girolles et pied-de-mouton » devient illisible.
+  return `hôte possible pour ${candidates.slice(0, 2).join(", ")}`;
 }

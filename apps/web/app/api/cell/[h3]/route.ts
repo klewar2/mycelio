@@ -42,8 +42,11 @@ export async function GET(
 
   const { data: species } = await supabase
     .from("species")
-    .select("id, slug, common_name_fr, scientific_name, notes_terrain, dangerous_confusions")
-    .eq("is_enabled", true);
+    .select(
+      "id, slug, common_name_fr, scientific_name, family, notes_terrain, dangerous_confusions, sort_order",
+    )
+    .eq("is_enabled", true)
+    .order("sort_order");
 
   const byId = new Map((species ?? []).map((s) => [s.id, s]));
 
@@ -57,6 +60,8 @@ export async function GET(
         slug: info?.slug ?? "",
         name: info?.common_name_fr ?? "",
         scientific: info?.scientific_name ?? "",
+        family: info?.family ?? info?.common_name_fr ?? "",
+        order: info?.sort_order ?? 0,
         notes: info?.notes_terrain ?? null,
         confusions: info?.dangerous_confusions ?? null,
         // Série des huit jours : c'est elle qui porte la tendance.
@@ -66,6 +71,41 @@ export async function GET(
     })
     .filter((s) => s.slug)
     .sort((a, b) => (b.scores[0] ?? 0) - (a.scores[0] ?? 0));
+
+  /**
+   * Regroupement par famille — la seule chose que lit le panneau d'inspection.
+   *
+   * Le maximum par jour, comme sur la carte : afficher « Cèpes » à la moyenne des trois espèces
+   * ferait passer pour médiocre un coin où le cèpe d'été est en plein pic. L'espèce qui porte le
+   * maximum du jour le plus fort est conservée à part : c'est elle qui donne les confusions
+   * dangereuses à afficher, et il serait absurde d'avertir sur la tête de nègre quand c'est le
+   * cèpe d'été qui pousse.
+   */
+  const families = [...new Map(ranked.map((s) => [s.family, s.family])).keys()]
+    .map((label) => {
+      const members = ranked.filter((s) => s.family === label);
+      const length = Math.max(...members.map((m) => m.scores.length), 0);
+      const best = Array.from({ length }, (_, day) =>
+        Math.max(...members.map((m) => m.scores[day] ?? 0)),
+      );
+      const peak = Math.max(...best, 0);
+      const leader =
+        members.find((m) => m.scores.some((value) => value >= peak && peak > 0)) ?? members[0]!;
+      return {
+        label,
+        scores: best,
+        confidence: Math.max(...members.map((m) => m.confidence), 0),
+        order: Math.min(...members.map((m) => m.order)),
+        leader: {
+          name: leader.name,
+          scientific: leader.scientific,
+          notes: leader.notes,
+          confusions: leader.confusions,
+        },
+        members: members.map((m) => m.name),
+      };
+    })
+    .sort((a, b) => a.order - b.order);
 
   const advice = buildAdvice(
     {
@@ -86,7 +126,7 @@ export async function GET(
   );
 
   return NextResponse.json(
-    { cell, species: ranked, advice },
+    { cell, families, advice },
     { headers: { "Cache-Control": "private, max-age=1800" } },
   );
 }

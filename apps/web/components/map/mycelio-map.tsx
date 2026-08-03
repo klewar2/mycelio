@@ -16,8 +16,10 @@ import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
-import { toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
-import { SpeciesPicker, type Species } from "./species-picker";
+import { ALL_FAMILIES, groupByFamily, slugsFor, type Species } from "@/lib/map/families";
+import { HORIZON, toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
+import { RAMP } from "@/lib/scoring/levels";
+import { ReadingPanel } from "./reading-panel";
 import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
 import { QuickOuting } from "./quick-outing";
@@ -27,9 +29,6 @@ type Props = {
   zoom: number;
   opacityRange: [number, number];
 };
-
-/** Rampe séquentielle du beige pâle à l'ocre profond. */
-const RAMP = ["#E8DCC0", "#D9BE7E", "#C89B3C", "#A87A28", "#8A5A16"];
 
 export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const mapRef = useRef<MapRef>(null);
@@ -41,10 +40,16 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [view, setView] = useState<{ bbox: [number, number, number, number]; detailed: boolean } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [species, setSpecies] = useState<Species[]>([]);
-  const [chosen, setChosen] = useState<string | null>(null);
+  // Sélection par famille, et non par espèce : « Cèpes », pas « Boletus reticulatus ».
+  // Par défaut, toutes — la première question d'un débutant n'est pas « où sont les girolles »
+  // mais « est-ce que ça pousse en ce moment ».
+  const [chosen, setChosen] = useState<string>(ALL_FAMILIES);
   const [forecast, setForecast] = useState<Map<string, Forecast>>(new Map());
   const [day, setDay] = useState(0);
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
+
+  const families = useMemo(() => groupByFamily(species), [species]);
+  const slugs = useMemo(() => slugsFor(families, chosen), [families, chosen]);
 
   useEffect(() => {
     if (!view) return;
@@ -67,18 +72,14 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   useEffect(() => {
     fetch("/api/species")
       .then((r) => r.json())
-      .then((data) => {
-        const list: Species[] = data.species ?? [];
-        setSpecies(list);
-        setChosen((current) => current ?? list[0]?.slug ?? null);
-      });
+      .then((data) => setSpecies(data.species ?? []));
   }, []);
 
-  // Les scores changent avec l'espèce, jamais avec le jour : les huit jours arrivent ensemble.
+  // Les scores changent avec la famille, jamais avec le jour : les huit jours arrivent ensemble.
   useEffect(() => {
-    if (!chosen || !view) return;
+    if (slugs.length === 0 || !view) return;
     let cancelled = false;
-    const query = `species=${encodeURIComponent(chosen)}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
+    const query = `species=${encodeURIComponent(slugs.join(","))}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
     fetch(`/api/forecast?${query}`)
       .then((r) => r.json())
       .then((data) => {
@@ -90,7 +91,7 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [chosen, view]);
+  }, [slugs, view]);
 
   /**
    * Le GeoJSON suit la fenêtre, pas le curseur de jour.
@@ -107,11 +108,34 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const visible = cells;
 
   /**
+   * Meilleur score de la fenêtre, jour par jour — la matière du panneau de lecture.
+   *
+   * Le MAXIMUM et non la moyenne : « y a-t-il un bon coin dans ce que je regarde » est la
+   * question, et une moyenne sur un département entier ne répondrait jamais oui. C'est aussi ce
+   * que l'œil cherche sur la carte — la maille la plus foncée — donc le verdict et le rendu
+   * disent la même chose.
+   */
+  const weekBest = useMemo(() => {
+    const best = new Array<number>(HORIZON).fill(0);
+    for (const row of forecast.values()) {
+      for (let d = 0; d < HORIZON; d++) {
+        const value = row.s?.[d] ?? 0;
+        if (value > best[d]!) best[d] = value;
+      }
+    }
+    return best;
+  }, [forecast]);
+
+  /**
    * Seuils de couleur, recalculés sur la fenêtre visible à chaque déplacement.
    *
    * Le classement reste relatif — exigence du cahier des charges, sans quoi une saison sèche
    * rendrait toute la carte uniformément pâle — mais il ne passe plus par les données : seules
    * les bornes de l'expression de couleur changent, ce qui ne coûte rien.
+   *
+   * C'est ce classement relatif que le panneau de lecture compense : lui donne la valeur
+   * absolue, en toutes lettres. Sans quoi une carte bien contrastée un jour de sécheresse
+   * laisserait croire à une bonne journée.
    */
   const stops = useMemo(() => {
     const values = visible
@@ -277,26 +301,24 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         </Source>
       </MapGL>
 
-      <SpeciesPicker
-        species={species}
+      <ReadingPanel
+        families={families}
         selected={chosen}
         onSelect={setChosen}
         day={day}
         onDayChange={setDay}
+        weekBest={weekBest}
+        hasData={forecast.size > 0}
+        loading={loading}
       />
 
-      {/* Dans le pouce, au-dessus du sélecteur d'espèce : c'est le geste qu'on fait en
+      {/* Dans le pouce, au-dessus du panneau de lecture : c'est le geste qu'on fait en
           rentrant de sortie, souvent d'une main. */}
-      <div className="pointer-events-none absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+13.5rem)] z-20 lg:bottom-24">
+      <div className="pointer-events-none absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+16rem)] z-20 lg:bottom-52">
         <QuickOuting species={species} h3={selected} position={position} />
       </div>
 
-      <MapControls
-        basemap={basemap}
-        onBasemapChange={setBasemap}
-        loading={loading}
-        count={visible.length}
-      />
+      <MapControls basemap={basemap} onBasemapChange={setBasemap} loading={loading} />
 
       <CellSheet h3={selected} day={day} onClose={() => setSelected(null)} />
     </div>
