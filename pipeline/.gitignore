@@ -1,3 +1,6 @@
 data/
 .venv/
 __pycache__/
+
+# Chaîne de connexion à la base de production : elle contient le mot de passe.
+.env.production

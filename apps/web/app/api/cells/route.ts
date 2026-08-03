@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { requirePermission } from "@/lib/auth/session";
+
+type CellRow = { h: string; f: number | null; e: string | null; a: number | null };
 
 /**
  * Mailles visibles dans la fenêtre de carte.
@@ -26,19 +29,15 @@ export async function GET(request: Request) {
   const [west, south, east, north] = bbox as [number, number, number, number];
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("cells_in_view", {
-    west,
-    south,
-    east,
-    north,
-    detailed,
-  });
+  const { rows, error } = await fetchAllRows<CellRow>(({ from, to }) =>
+    supabase
+      .rpc("cells_in_view", { west, south, east, north, detailed })
+      .range(from, to),
+  );
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error }, { status: 500 });
   }
-
-  const rows = data ?? [];
 
   // Les essences sont une vingtaine de libellés répétés des milliers de fois : on envoie une
   // légende et un index plutôt que la chaîne à chaque ligne.

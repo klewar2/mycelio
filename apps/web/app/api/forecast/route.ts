@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { requirePermission } from "@/lib/auth/session";
+
+type ForecastRow = { h: string; s: number[] | null; c: number | null };
 
 /**
  * Scores de poussée dans la fenêtre de carte, pour une espèce.
@@ -31,22 +34,19 @@ export async function GET(request: Request) {
   const [west, south, east, north] = bbox as [number, number, number, number];
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("forecast_in_view", {
-    species_slug: species,
-    west,
-    south,
-    east,
-    north,
-    detailed,
-  });
+  const { rows, error } = await fetchAllRows<ForecastRow>(({ from, to }) =>
+    supabase
+      .rpc("forecast_in_view", { species_slug: species, west, south, east, north, detailed })
+      .range(from, to),
+  );
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error }, { status: 500 });
   }
 
   return NextResponse.json(
     {
-      cells: (data ?? []).map((row) => ({
+      cells: rows.map((row) => ({
         h: row.h,
         s: (row.s ?? []).map((value: number) => Math.round(value * 100) / 100),
         c: Math.round((row.c ?? 0) * 100) / 100,
