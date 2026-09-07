@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TriangleAlert, X } from "lucide-react";
+import { ChevronLeft, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TerrainCore } from "./terrain-core";
 import { aspectLabel, topographicPosition } from "@/lib/terrain/advice";
 import { LEVELS, dayLabel, levelIndex, levelOf } from "@/lib/scoring/levels";
+import { CELL_SHEET_HEIGHTS, MOBILE_NAV_CLEARANCE } from "@/lib/map/sheet";
 
 type FamilyDetail = {
   label: string;
@@ -54,16 +55,23 @@ type CellDetail = {
  * et se lit spontanément comme « une chance sur sept », ce qui est faux : le score est un indice
  * de faveur, pas une probabilité calibrée.
  *
- * Bottom sheet sur mobile, colonne flottante sur desktop.
+ * Bottom sheet sur mobile — à mi-hauteur par défaut, la carte reste visible derrière, et un tap
+ * sur la poignée déplie en plein écran pour la lecture complète. Colonne flottante sur desktop,
+ * sans ce cran : l'écran y est assez grand pour tout montrer d'un coup.
  */
 export function CellSheet({
   h3,
   day,
   onClose,
+  expanded,
+  onExpandedChange,
 }: {
   h3: string | null;
   day: number;
   onClose: () => void;
+  /** Mi-hauteur ou plein écran, sur mobile — possédé par le parent pour la position du FAB. */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }) {
   const [detail, setDetail] = useState<CellDetail | null>(null);
 
@@ -108,26 +116,42 @@ export function CellSheet({
     <aside
       role="dialog"
       aria-label="Ce coin"
-      className="surface-float pointer-events-auto absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+15.5rem)] z-20 max-h-[50dvh] overflow-y-auto p-4 lg:inset-x-auto lg:top-20 lg:right-3 lg:bottom-3 lg:max-h-none lg:w-88"
+      className="surface-float pointer-events-auto absolute inset-x-3 z-20 overflow-y-auto transition-[height] duration-300 ease-out lg:inset-x-auto lg:top-20 lg:right-3 lg:bottom-3 lg:h-auto lg:max-h-none lg:w-88 lg:!bottom-3"
+      style={{ height: CELL_SHEET_HEIGHTS[expanded ? 1 : 0], bottom: MOBILE_NAV_CLEARANCE }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-muted-foreground text-[0.6875rem] font-semibold tracking-[0.14em] uppercase">
-          Ce coin · {dayLabel(day)}
-        </p>
+      {/* Poignée : visible seulement sur mobile, où la feuille a deux crans. */}
+      <div
+        className="flex touch-none justify-center pt-2 pb-0.5 lg:hidden"
+        onClick={() => onExpandedChange(!expanded)}
+        role="button"
+        tabIndex={0}
+        aria-label={expanded ? "Replier à mi-hauteur" : "Déplier en plein écran"}
+      >
+        <span className="bg-border h-1 w-11 rounded-full" />
+      </div>
+
+      <div className="bg-card/95 sticky top-0 z-10 flex items-center gap-1 px-2 pt-1 pb-2 backdrop-blur-xl lg:static lg:bg-transparent lg:px-4 lg:pt-4 lg:pb-0 lg:backdrop-blur-none">
         <Button
           variant="ghost"
           size="icon"
           onClick={onClose}
-          aria-label="Fermer"
-          className="-mt-2 -mr-2"
+          aria-label="Retour à la carte"
+          className="lg:hidden"
         >
+          <ChevronLeft className="size-4" />
+        </Button>
+        <p className="text-muted-foreground flex-1 text-center text-[0.6875rem] font-semibold tracking-[0.14em] uppercase lg:text-left">
+          Ce coin · {dayLabel(day)}
+        </p>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fermer">
           <X className="size-4" />
         </Button>
       </div>
 
-      {!ready ? <p className="text-muted-foreground mt-6 text-sm">Lecture du coin…</p> : null}
+      <div className="px-4 pb-4 lg:px-4">
+        {!ready ? <p className="text-muted-foreground mt-6 text-sm">Lecture du coin…</p> : null}
 
-      {cell ? (
+        {cell ? (
         <>
           {/* ---------- Bloc 1 : le verdict ---------- */}
           <section className="mt-2">
@@ -276,8 +300,9 @@ export function CellSheet({
               </div>
             </section>
           ) : null}
-        </>
-      ) : null}
+          </>
+        ) : null}
+      </div>
     </aside>
   );
 }

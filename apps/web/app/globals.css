@@ -172,6 +172,15 @@
     isolation: isolate;
   }
 
+  /* Sur mobile, la géolocalisation et le zoom natifs de MapLibre cèdent la place au bouton
+     "Me localiser" du MapControls, habillé dans notre style. Le contrôle reste actif — on le
+     déclenche par programme via geolocateRef — seul son bouton par défaut disparaît. */
+  @media (width < 64rem) {
+    .maplibregl-ctrl-top-right {
+      display: none;
+    }
+  }
+
   .topo-texture::before {
     content: "";
     position: absolute;

@@ -28,6 +28,11 @@ function readSpecies(formData: FormData): TablesInsert<"species"> {
     // Vide = l'espèce s'affiche seule sur la carte, sous son propre nom.
     family: String(formData.get("family") ?? "").trim() || null,
     host_codes: hosts,
+    // Les deux préférences de terrain lues par le moteur d'habitat. Sans elles ici, une
+    // sauvegarde depuis cet écran laisserait les valeurs intactes mais inéditables — ce qui
+    // revient à la constante en dur qu'elles remplacent.
+    edge_affinity: num(formData, "edge_affinity") ?? 0,
+    twi_optimum: num(formData, "twi_optimum"),
     ph_min: num(formData, "ph_min"),
     ph_max: num(formData, "ph_max"),
     alt_min_m: num(formData, "alt_min_m"),

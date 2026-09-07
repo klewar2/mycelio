@@ -19,13 +19,32 @@ export async function GET(
 
   const supabase = await createClient();
 
-  const { data: cell, error } = await supabase
-    .from("cells")
-    // "*" plutôt qu'une liste concaténée : Supabase infère le type des colonnes depuis le
-    // littéral de sélection, et une concaténation lui fait perdre ce typage.
-    .select("*")
-    .eq("h3_index", h3)
-    .single();
+  // Les trois lectures partent ENSEMBLE : aucune ne dépend du résultat d'une autre, et les
+  // enchaîner faisait payer trois allers-retours là où le plus lent suffit. C'était le poste
+  // principal du délai d'ouverture de ce panneau, avec la pile d'authentification.
+  //
+  // Interroger `forecast` et `species` pour une maille qui s'avère masquée ne coûte que ces
+  // requêtes-là, et ne divulgue rien : la réponse reste un 404 nu.
+  const [cellResult, scoresResult, speciesResult] = await Promise.all([
+    supabase
+      .from("cells")
+      // "*" plutôt qu'une liste concaténée : Supabase infère le type des colonnes depuis le
+      // littéral de sélection, et une concaténation lui fait perdre ce typage.
+      .select("*")
+      .eq("h3_index", h3)
+      .single(),
+    // Probabilités du jour, toutes espèces, pour établir le trio de tête.
+    supabase.from("forecast").select("species_id, scores, confidence").eq("h3_index", h3),
+    supabase
+      .from("species")
+      .select(
+        "id, slug, common_name_fr, scientific_name, family, notes_terrain, dangerous_confusions, sort_order",
+      )
+      .eq("is_enabled", true)
+      .order("sort_order"),
+  ]);
+
+  const { data: cell, error } = cellResult;
 
   // Une maille protégée est traitée comme inexistante, et non signalée comme protégée : la
   // carte ne la rend pas, l'API ne doit pas non plus permettre de l'inspecter en devinant son
@@ -34,19 +53,14 @@ export async function GET(
     return NextResponse.json({ error: "maille inconnue" }, { status: 404 });
   }
 
-  // Probabilités du jour, toutes espèces, pour établir le trio de tête.
-  const { data: scores } = await supabase
-    .from("forecast")
-    .select("species_id, scores, confidence")
-    .eq("h3_index", h3);
-
-  const { data: species } = await supabase
-    .from("species")
-    .select(
-      "id, slug, common_name_fr, scientific_name, family, notes_terrain, dangerous_confusions, sort_order",
-    )
-    .eq("is_enabled", true)
-    .order("sort_order");
+  const scores = scoresResult.data;
+  // Cette lecture-ci n'était pas contrôlée : quand la colonne `family` a manqué en production,
+  // `species` valait null, `byId` restait vide, et le panneau s'affichait avec un terrain
+  // complet et ZÉRO espèce — sans erreur nulle part. Une donnée manquante doit se voir.
+  if (speciesResult.error) {
+    return NextResponse.json({ error: speciesResult.error.message }, { status: 500 });
+  }
+  const species = speciesResult.data;
 
   const byId = new Map((species ?? []).map((s) => [s.id, s]));
 

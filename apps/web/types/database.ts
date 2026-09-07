@@ -203,6 +203,33 @@ export type Database = {
         }
         Relationships: []
       }
+      cells_r7: {
+        Row: {
+          alt_m: number | null
+          centroid: unknown
+          essence: string | null
+          forest_share: number | null
+          h3_r7: string
+          n: number
+        }
+        Insert: {
+          alt_m?: number | null
+          centroid: unknown
+          essence?: string | null
+          forest_share?: number | null
+          h3_r7: string
+          n: number
+        }
+        Update: {
+          alt_m?: number | null
+          centroid?: unknown
+          essence?: string | null
+          forest_share?: number | null
+          h3_r7?: string
+          n?: number
+        }
+        Relationships: []
+      }
       finds: {
         Row: {
           created_at: string
@@ -283,6 +310,42 @@ export type Database = {
           },
           {
             foreignKeyName: "forecast_species_id_fkey"
+            columns: ["species_id"]
+            isOneToOne: false
+            referencedRelation: "species"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forecast_r7: {
+        Row: {
+          confidence: number
+          h3_r7: string
+          scores: number[]
+          species_id: number
+        }
+        Insert: {
+          confidence: number
+          h3_r7: string
+          scores: number[]
+          species_id: number
+        }
+        Update: {
+          confidence?: number
+          h3_r7?: string
+          scores?: number[]
+          species_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forecast_r7_h3_r7_fkey"
+            columns: ["h3_r7"]
+            isOneToOne: false
+            referencedRelation: "cells_r7"
+            referencedColumns: ["h3_r7"]
+          },
+          {
+            foreignKeyName: "forecast_r7_species_id_fkey"
             columns: ["species_id"]
             isOneToOne: false
             referencedRelation: "species"
@@ -451,6 +514,7 @@ export type Database = {
           alt_min_m: number | null
           common_name_fr: string
           dangerous_confusions: string | null
+          edge_affinity: number
           family: string | null
           gbif_taxon_key: number | null
           host_codes: string[]
@@ -470,12 +534,14 @@ export type Database = {
           soil_temp_tol_c: number | null
           sort_order: number
           thermophilic: boolean
+          twi_optimum: number | null
         }
         Insert: {
           alt_max_m?: number | null
           alt_min_m?: number | null
           common_name_fr: string
           dangerous_confusions?: string | null
+          edge_affinity?: number
           family?: string | null
           gbif_taxon_key?: number | null
           host_codes?: string[]
@@ -495,12 +561,14 @@ export type Database = {
           soil_temp_tol_c?: number | null
           sort_order?: number
           thermophilic?: boolean
+          twi_optimum?: number | null
         }
         Update: {
           alt_max_m?: number | null
           alt_min_m?: number | null
           common_name_fr?: string
           dangerous_confusions?: string | null
+          edge_affinity?: number
           family?: string | null
           gbif_taxon_key?: number | null
           host_codes?: string[]
@@ -520,6 +588,40 @@ export type Database = {
           soil_temp_tol_c?: number | null
           sort_order?: number
           thermophilic?: boolean
+          twi_optimum?: number | null
+        }
+        Relationships: []
+      }
+      weather_grid: {
+        Row: {
+          id: number
+          point: unknown
+          rain_mm: number[]
+          run_id: string
+          soil_moisture: number[]
+          tmax_c: number[]
+          tmin_c: number[]
+          weather_code: number[]
+        }
+        Insert: {
+          id?: never
+          point: unknown
+          rain_mm: number[]
+          run_id: string
+          soil_moisture: number[]
+          tmax_c: number[]
+          tmin_c: number[]
+          weather_code: number[]
+        }
+        Update: {
+          id?: never
+          point?: unknown
+          rain_mm?: number[]
+          run_id?: string
+          soil_moisture?: number[]
+          tmax_c?: number[]
+          tmin_c?: number[]
+          weather_code?: number[]
         }
         Relationships: []
       }
@@ -561,6 +663,30 @@ export type Database = {
         }[]
       }
       is_active_user: { Args: never; Returns: boolean }
+      map_in_view: {
+        Args: {
+          detailed?: boolean
+          east: number
+          north: number
+          south: number
+          species_slugs: string[]
+          west: number
+        }
+        Returns: Json
+      }
+      me: { Args: never; Returns: Json }
+      refresh_forecast_r7: { Args: never; Returns: undefined }
+      refresh_map_aggregates: { Args: never; Returns: undefined }
+      weather_in_view: {
+        Args: { east: number; north: number; south: number; west: number }
+        Returns: {
+          rain_mm: number[]
+          soil_moisture: number[]
+          tmax_c: number[]
+          tmin_c: number[]
+          weather_code: number[]
+        }[]
+      }
     }
     Enums: {
       app_role: "lecture" | "ecriture" | "admin"

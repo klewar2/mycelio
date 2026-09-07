@@ -29,6 +29,7 @@ def load_inputs():
         cells = pd.read_sql(
             """
             select h3_index, hosts, forest_share, alt_m, twi, soil_ph,
+                   dist_edge_m, northness, slope_pct,
                    extensions.st_y(centroid::extensions.geometry) as lat,
                    extensions.st_x(centroid::extensions.geometry) as lng
             from public.cells
@@ -48,10 +49,18 @@ def run() -> int:
     horizon = int(get_setting("scoring.forecast_horizon_days"))
     weights = scoring.Weights(
         host_match=float(get_setting("scoring.host_match_weight")),
+        host_generic=float(get_setting("scoring.host_generic_weight")),
+        forest_share=float(get_setting("scoring.forest_share_weight")),
+        edge=float(get_setting("scoring.edge_weight")),
+        aspect=float(get_setting("scoring.aspect_weight")),
         soil_moisture=float(get_setting("scoring.soil_moisture_weight")),
         temp_shock=float(get_setting("scoring.temp_shock_weight")),
         rain_optimum_mm=float(get_setting("scoring.rain_optimum_mm")),
         rain_window_days=int(get_setting("scoring.rain_window_days")),
+        # Les jetons que le pipeline pose quand la BD Forêt ne résout pas l'essence. Ils vivent
+        # en base et non ici : la table HOSTS de forest.py peut gagner une entrée générique sans
+        # qu'on ait à toucher au moteur.
+        generic_host_codes=frozenset(get_setting("scoring.generic_host_codes")),
     )
 
     with connect() as conn:
@@ -81,6 +90,9 @@ def run() -> int:
         altitude = cells["alt_m"].to_numpy(dtype="float64")
         twi = cells["twi"].to_numpy(dtype="float64")
         forest_share = cells["forest_share"].to_numpy(dtype="float64")
+        dist_edge = cells["dist_edge_m"].to_numpy(dtype="float64")
+        northness = cells["northness"].to_numpy(dtype="float64")
+        slope = cells["slope_pct"].to_numpy(dtype="float64")
 
         today = pd.Timestamp(dt.date.today())
         rows: list[pd.DataFrame] = []
@@ -97,11 +109,20 @@ def run() -> int:
                 soil_ph,
                 altitude,
                 twi,
+                forest_share,
+                dist_edge,
+                northness,
+                slope,
                 ph_min=sp["ph_min"],
                 ph_max=sp["ph_max"],
                 alt_min=sp["alt_min_m"],
                 alt_max=sp["alt_max_m"],
-                prefers_humid=sp["slug"] == "trompette-de-la-mort",
+                # Toutes les préférences de terrain viennent de la fiche d'espèce, éditable
+                # depuis /admin/especes. Le moteur ne connaît plus aucun slug.
+                twi_optimum=None if pd.isna(sp["twi_optimum"]) else float(sp["twi_optimum"]),
+                edge_affinity=float(sp["edge_affinity"] or 0.0),
+                thermophilic=bool(sp["thermophilic"]),
+                prefers_calcareous=bool(sp["prefers_calcareous"]),
                 weights=weights,
             )
             conf = scoring.confidence(soil_ph, matched, forest_share)
@@ -166,6 +187,21 @@ def run() -> int:
         frame.to_csv(buffer, index=False, header=False)
         buffer.seek(0)
 
+        weather_frame = weather.to_rows(grid, str(run_id), today, horizon)
+        # EWKT texte : le type geography l'accepte directement en entrée, sans passer par
+        # ST_GeomFromEWKT — plus simple à produire dans un CSV que du binaire.
+        weather_frame.insert(
+            0,
+            "point",
+            [f"SRID=4326;POINT({lng} {lat})" for lat, lng in zip(
+                weather_frame["lat"], weather_frame["lng"], strict=True
+            )],
+        )
+        weather_frame = weather_frame.drop(columns=["lat", "lng"])
+        weather_buffer = io.StringIO()
+        weather_frame.to_csv(weather_buffer, index=False, header=False)
+        weather_buffer.seek(0)
+
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute("truncate public.forecast")
@@ -174,6 +210,21 @@ def run() -> int:
                     " from stdin with (format csv)"
                 ) as copy:
                     copy.write(buffer.read())
+
+                cur.execute("truncate public.weather_grid")
+                with cur.copy(
+                    "copy public.weather_grid"
+                    " (point, rain_mm, tmin_c, tmax_c, soil_moisture, weather_code, run_id)"
+                    " from stdin with (format csv)"
+                ) as copy:
+                    copy.write(weather_buffer.read())
+
+                # Rien à faire ici pour `forecast_r7` : un déclencheur d'instruction le
+                # reconstruit à la fin du COPY, dans cette transaction (migration 0027). Le
+                # rattrapage est en base et non ici parce que le cron tourne le code de `main`
+                # et non celui du poste de travail — un appel écrit ici ne protège que celui qui
+                # l'a écrit.
+
                 cur.execute(
                     "update public.forecast_runs set status='success', finished_at=now(),"
                     " cells_count=%s where id=%s",

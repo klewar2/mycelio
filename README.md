@@ -27,7 +27,9 @@ le filtrage GBIF en CC-BY-NC.
 | 7 | LightGBM, validation spatiale | après une saison de terrain |
 
 **Chiffres actuels** — 86 137 mailles H3 en résolution 9 (~280 m de largeur), 8 espèces
-regroupées en 6 familles, 689 096 scores sur 8 jours, base à 172 Mo.
+regroupées en 6 familles, 689 096 scores sur 8 jours, base à 172 Mo. La vue dézoomée ne lit pas
+ces 689 096 lignes : elle lit `forecast_r7`, leur agrégat par parent en résolution 7, soit
+30 688 lignes reconstruites à chaque écriture de `forecast` par un déclencheur.
 
 ---
 
@@ -101,7 +103,7 @@ mycelio/
 │   │   ├── (app)/journal        carnet de sorties
 │   │   ├── (app)/reglages       profil, mot de passe
 │   │   ├── (app)/admin/         comptes, droits, paramètres, espèces, audit
-│   │   └── api/                 cells, forecast, species, cell/[h3], outings/gpx
+│   │   └── api/                 map, cell/[h3], weather, outings/gpx
 │   ├── components/
 │   │   ├── map/                 MapLibre, panneau de lecture, inspection, carotte de terrain
 │   │   ├── admin/               matrice de droits, formulaire générique
@@ -112,7 +114,8 @@ mycelio/
 │   │   ├── scoring/             paliers nommés — la seule échelle vue par l'utilisateur
 │   │   ├── supabase/            clients navigateur, serveur, admin
 │   │   └── terrain/             règles de conseil de terrain
-│   └── proxy.ts                 rafraîchissement de session (ex-middleware)
+│   ├── proxy.ts                 rafraîchissement de session (ex-middleware)
+│   └── vercel.json              région des fonctions — cdg1, comme la base
 ├── pipeline/                    Python 3.12, hors ligne, jamais déployé
 │   └── mycelio/
 │       ├── grid.py              maillage H3
@@ -127,7 +130,7 @@ mycelio/
 ├── supabase/
 │   ├── migrations/              schéma, fonctions, triggers, RLS, seeds
 │   └── tests/                   pgTAP
-└── .github/workflows/           CI + scoring quotidien
+└── .github/workflows/           CI, scoring quotidien, migrations en production
 ```
 
 Aucun calcul géospatial ne doit apparaître dans `apps/web` : tout est précalculé hors ligne. Un
@@ -168,6 +171,12 @@ Deux invariants sont tenus par des triggers, pas par l'application :
 | Base | Supabase — Postgres 17, PostGIS, Auth, RLS | palier gratuit : 500 Mo, 50 000 MAU |
 | Pipeline | Python 3.12 + uv | geopandas, rasterio, pysheds, h3, psycopg |
 | Cron | GitHub Actions, 5 h UTC | son écriture quotidienne empêche la mise en veille de Supabase |
+| Migrations | GitHub Actions, après la CI | le schéma suit le code sans geste manuel — voir le point 13 |
+
+> **Les fonctions Vercel doivent tourner à Paris.** Elles tournaient à `iad1` (Washington) alors
+> que Supabase est à `eu-west-3` (Paris) : chaque appel de carte traversait l'Atlantique six fois
+> — proxy, `getUser`, profil, permissions, puis deux pages de PostgREST. `apps/web/vercel.json`
+> fixe `cdg1`. Le réglage se vérifie aussi dans le tableau de bord, Settings → Functions.
 
 > **MapLibre reste bloqué en 5.x.** `@vis.gl/react-maplibre` 8.1.1 lit `map.transform`, propriété
 > supprimée en MapLibre 6, mais déclare un pair permissif `>=4.0.0` : pnpm installe la 6 sans
@@ -217,17 +226,27 @@ score = habitat × phénologie × météo
 ```
 
 Les trois facteurs sont dans [0, 1] et se multiplient : chacun peut annuler le score à lui seul.
-Sans hôte mycorhizien compatible, il n'y a pas de cèpe, quelle que soit la météo — et ce seul
-facteur élimine 60 à 70 % de la carte.
+Sans hôte mycorhizien compatible, il n'y a pas de cèpe, quelle que soit la météo.
 
-- **habitat** — appariement hôte, cloche sur le pH, plateau d'altitude, indice d'humidité
+- **habitat** — appariement hôte à trois niveaux, part boisée, cloche sur le pH, plateau
+  d'altitude, indice d'humidité topographique, effet de lisière, exposition
 - **phénologie** — fenêtre saisonnière circulaire, correction d'altitude (~7 jours par 100 m),
   cloche sur la température du sol
 - **météo** — cloche sur la pluie cumulée décalée du délai propre à l'espèce, humidité de
   l'horizon 7–28 cm, amplitude thermique nocturne
 
+**L'appariement d'hôte se fait à trois niveaux, pas deux.** La BD Forêt classe 34 951 mailles
+en « Feuillus » sans résoudre l'essence, et ce jeton générique figure dans la liste d'hôtes des
+trois cèpes, de la girolle, de la trompette et de la morille. Le compter comme un vrai chêne
+rendait 86 % du territoire « compatible cèpes », et la carte annonçait « très bonnes chances »
+sur 29,5 % des mailles — 2 000 km². Un hôte générique vaut donc `scoring.host_generic_weight`,
+entre l'appariement plein et l'absence : c'est ce qu'on sait, ni plus ni moins. Avec la part
+boisée, la lisière et l'exposition remises dans le calcul, les « très bonnes chances » sont
+retombées à 3,4 %.
+
 `pipeline/mycelio/scoring.py` ne contient **que des formes de courbes** : aucune constante
-mycologique n'y est écrite. Les huit espèces, leurs hôtes, pH, altitudes, fenêtres et délais
+mycologique n'y est écrite. Le `slug == 'trompette-de-la-mort'` qui y traînait — la seule
+entorse — est devenu la colonne `species.twi_optimum`, éditable comme le reste. Les huit espèces, leurs hôtes, pH, altitudes, fenêtres et délais
 vivent dans la table `species`, éditable depuis `/admin/especes`. Les poids sont dans
 `/admin/scoring`. C'est le levier de calibration après les premières sorties.
 
@@ -370,17 +389,37 @@ le propager.
 réelles du projet, et la phase 7 en dépend. L'interface doit la rendre aussi rapide à noter
 qu'une trouvaille.
 
-**11. L'horizon de 8 jours est écrit à trois endroits, qui doivent bouger ensemble.**
+**11. L'horizon de 8 jours est écrit à quatre endroits, qui doivent bouger ensemble.**
 `scoring.forecast_horizon_days` en base, `HORIZON` dans `lib/map/hexagons.ts`, et les huit
-indices explicites de `forecast_in_view`. Cette dernière prend le maximum par indice plutôt que
-de déplier les tableaux : à l'échelle des trois départements, la forme dépliée matérialise
-5,5 millions de lignes contre 689 000, soit 578 ms au lieu de 377 ms sur la vue par défaut — et
-cinq fois plus cher encore sur la vue détaillée.
+indices explicites de `map_in_view` et de `refresh_forecast_r7`. Ces fonctions prennent le
+maximum par indice plutôt que de déplier les tableaux : à l'échelle des trois départements, la
+forme dépliée matérialise 5,5 millions de lignes contre 689 000.
 
 **12. Aucun écran ne montre un score brut à l'utilisateur.** Ni pourcentage, ni valeur de
 confiance chiffrée : uniquement des paliers nommés (`lib/scoring/levels.ts`). Un nombre entre 0
 et 1 qui n'est pas une probabilité mais qu'on affiche en pourcentage est une affirmation fausse,
 pas une donnée brute. Les administrateurs, eux, gardent les nombres dans `/admin`.
+
+**13. Une migration ne s'applique JAMAIS à la main.** Le workflow `migrate.yml` la pousse après
+chaque CI verte, et c'est la seule voie. Le 3 août, le commit « familles » est parti sur Vercel
+avec son code et sans son schéma : `species.family` n'existait pas en production, `/api/species`
+renvoyait 500, la carte ne demandait plus aucun score. Elle est restée **muette cinq semaines**
+— affichée normalement, hexagones gris, verdict vide — pendant que les données, elles, étaient
+justes. Personne ne l'a vu parce qu'une carte en panne se voit et qu'une carte silencieuse, non.
+Le déploiement de la base était le dernier maillon manuel de la chaîne ; il ne l'est plus.
+
+**14. Ce qui lit `forecast` doit lire `forecast_r7` quand la carte est dézoomée.** Et
+réciproquement : l'agrégat ne doit jamais retarder sur la table source. Le rattrapage est un
+déclencheur d'instruction en base (`forecast_refresh_r7`), pas un appel dans `score.py` — parce
+que le cron exécute le code de `main` et non celui du poste de travail, et qu'un appel écrit
+dans le pipeline ne protège que celui qui l'a écrit. Même raison que le point 13, même classe de
+panne : silencieuse.
+
+**15. Le filtre d'emprise utilise `&&`, jamais `st_intersects`.** L'opérateur seul compare les
+boîtes englobantes — ce que fait déjà l'index GIST — et rend un sur-ensemble de quelques
+centaines de mètres, sur un écran que le client entoure déjà de 15 % de marge. Le test exact de
+`st_intersects` coûtait 372 ms contre 27 pour écarter 4 % de lignes. Le sens de l'erreur est le
+bon : rendre une maille de trop ne se voit pas, en oublier une se paierait sur le terrain.
 
 Le reste des pièges est documenté à l'endroit du code concerné.
 

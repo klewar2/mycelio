@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 
+import type { Species } from "@/lib/map/families";
+
 // Importée depuis ce fragment statique, et pas seulement depuis le composant chargé
 // dynamiquement, pour qu'elle entre dans le bundle CSS initial plutôt que d'arriver après le
 // premier rendu de la carte. Sans elle, le canvas perd son positionnement absolu.
@@ -30,6 +32,7 @@ export function MapShell(props: {
   center: [number, number];
   zoom: number;
   opacityRange: [number, number];
+  species: Species[];
 }) {
   return <MycelioMap {...props} />;
 }

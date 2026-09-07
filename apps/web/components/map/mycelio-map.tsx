@@ -17,8 +17,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
 import { ALL_FAMILIES, groupByFamily, slugsFor, type Species } from "@/lib/map/families";
-import { HORIZON, toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
+import { HORIZON, snapBounds, toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
+import { CELL_SHEET_HEIGHTS, MOBILE_NAV_CLEARANCE, READING_SHEET_HEIGHTS } from "@/lib/map/sheet";
+import type { WeatherSeries } from "@/lib/map/weather";
 import { RAMP } from "@/lib/scoring/levels";
+import { cn } from "@/lib/utils";
 import { ReadingPanel } from "./reading-panel";
 import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
@@ -28,9 +31,11 @@ type Props = {
   center: [number, number];
   zoom: number;
   opacityRange: [number, number];
+  /** Rendues par le Server Component : la carte ne peut rien demander avant de les connaître. */
+  species: Species[];
 };
 
-export function MycelioMap({ center, zoom, opacityRange }: Props) {
+export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
   const mapRef = useRef<MapRef>(null);
   // Le type de l'instance n'est pas ré-exporté par la bibliothèque : on le dérive.
   const geolocateRef = useRef<React.ComponentRef<typeof GeolocateControl>>(null);
@@ -39,27 +44,46 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<{ bbox: [number, number, number, number]; detailed: boolean } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [species, setSpecies] = useState<Species[]>([]);
   // Sélection par famille, et non par espèce : « Cèpes », pas « Boletus reticulatus ».
   // Par défaut, toutes — la première question d'un débutant n'est pas « où sont les girolles »
   // mais « est-ce que ça pousse en ce moment ».
   const [chosen, setChosen] = useState<string>(ALL_FAMILIES);
   const [forecast, setForecast] = useState<Map<string, Forecast>>(new Map());
+  const [weather, setWeather] = useState<WeatherSeries | null>(null);
   const [day, setDay] = useState(0);
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
+  // Possédés ici, et non par ReadingPanel/CellSheet, parce que le bouton flottant a besoin de
+  // suivre la hauteur de la feuille active pour ne jamais se retrouver sous elle.
+  const [sheetSnap, setSheetSnap] = useState(1);
+  const [cellExpanded, setCellExpanded] = useState(false);
 
   const families = useMemo(() => groupByFamily(species), [species]);
   const slugs = useMemo(() => slugsFor(families, chosen), [families, chosen]);
 
+  /**
+   * Mailles et scores, en un seul appel.
+   *
+   * Les deux arrivaient par deux routes distinctes, déclenchées par le même changement d'emprise
+   * à la même milliseconde. Chacune payait sa pile d'authentification, et se dédoublait encore
+   * par la pagination de PostgREST au-delà de 1 000 mailles — ce qui est le cas de la vue par
+   * défaut. On ne demande plus qu'une chose : ce qu'il y a dans ce rectangle.
+   *
+   * Les scores changent avec la famille, jamais avec le jour : les huit jours arrivent ensemble,
+   * et la barre de semaine ne déclenche aucun appel réseau.
+   */
   useEffect(() => {
-    if (!view) return;
+    if (!view || slugs.length === 0) return;
     let cancelled = false;
-    const query = `bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
-    fetch(`/api/cells?${query}`)
+    const query = `species=${encodeURIComponent(slugs.join(","))}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
+    fetch(`/api/map?${query}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        setCells(data.cells ?? []);
+        const rows = (data.cells ?? []) as (Cell & { s: number[]; c: number })[];
+        setCells(rows);
+        const next = new Map<string, Forecast>();
+        for (const row of rows) next.set(row.h, { h: row.h, s: row.s, c: row.c });
+        setForecast(next);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -67,31 +91,24 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [slugs, view]);
 
+  // Une seule série pour toute la fenêtre, jamais par maille : la météo n'a pas de structure
+  // plus fine que quelques kilomètres (voir pipeline/mycelio/weather.py), donc pas de sens à
+  // relancer l'appel au changement de famille ou de jour — seul le déplacement de la carte
+  // compte.
   useEffect(() => {
-    fetch("/api/species")
-      .then((r) => r.json())
-      .then((data) => setSpecies(data.species ?? []));
-  }, []);
-
-  // Les scores changent avec la famille, jamais avec le jour : les huit jours arrivent ensemble.
-  useEffect(() => {
-    if (slugs.length === 0 || !view) return;
+    if (!view) return;
     let cancelled = false;
-    const query = `species=${encodeURIComponent(slugs.join(","))}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
-    fetch(`/api/forecast?${query}`)
+    fetch(`/api/weather?bbox=${view.bbox.join(",")}`)
       .then((r) => r.json())
       .then((data) => {
-        if (cancelled) return;
-        const next = new Map<string, Forecast>();
-        for (const row of data.cells ?? []) next.set(row.h, row);
-        setForecast(next);
+        if (!cancelled) setWeather(data.weather ?? null);
       });
     return () => {
       cancelled = true;
     };
-  }, [slugs, view]);
+  }, [view]);
 
   /**
    * Le GeoJSON suit la fenêtre, pas le curseur de jour.
@@ -178,15 +195,29 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
     if (!canvas || canvas.width === 0 || canvas.height === 0) return;
     try {
       const b = map.getBounds();
-      // Une marge de 30 % autour de l'écran : le déplacement suivant trouve déjà ses mailles
-      // chargées, et la carte ne se remplit pas par à-coups.
-      const padX = (b.getEast() - b.getWest()) * 0.3;
-      const padY = (b.getNorth() - b.getSouth()) * 0.3;
-      setView({
-        bbox: [b.getWest() - padX, b.getSouth() - padY, b.getEast() + padX, b.getNorth() + padY],
+      // Marge, PUIS arrondi sur une grille (voir snapBounds). La marge seule ne suffisait pas :
+      // elle chargeait bien un peu de carte hors écran, mais l'emprise restant continue, le
+      // moindre panoramique changeait l'URL et redemandait tout. Arrondie, elle ne change qu'en
+      // franchissant une case — d'où un déplacement servi par le cache la plupart du temps.
+      const bbox = snapBounds(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
+      setView((current) => {
         // En dessous de ce zoom, une maille de 280 m fait moins d'un pixel : on bascule sur le
         // parent en résolution 7, agrégé côté serveur.
-        detailed: map.getZoom() >= 11,
+        const detailed = map.getZoom() >= 11;
+        // Identité référentielle : `view` est une dépendance d'effet. Sans cette comparaison,
+        // chaque `idle` — il y en a un par inertie de glissement — rendrait un objet neuf et
+        // relancerait la requête que l'arrondi vient précisément d'éviter.
+        if (
+          current &&
+          current.detailed === detailed &&
+          current.bbox[0] === bbox[0] &&
+          current.bbox[1] === bbox[1] &&
+          current.bbox[2] === bbox[2] &&
+          current.bbox[3] === bbox[3]
+        ) {
+          return current;
+        }
+        return { bbox, detailed };
       });
     } catch {
       // emprise indisponible à cet instant : on réessaiera au prochain idle
@@ -207,7 +238,20 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
   const onClick = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0];
     setSelected(feature ? (feature.properties?.h as string) : null);
+    setCellExpanded(false);
   }, []);
+
+  const closeCell = useCallback(() => {
+    setSelected(null);
+    setSheetSnap(1);
+  }, []);
+
+  // Suit la feuille actuellement montrée au premier plan — la fiche « Ce coin » quand une
+  // maille est sélectionnée, sinon le panneau de lecture — pour que le bouton flottant reste
+  // toujours juste au-dessus, comme dans le mockup.
+  const activeSheetHeight = selected
+    ? CELL_SHEET_HEIGHTS[cellExpanded ? 1 : 0]
+    : READING_SHEET_HEIGHTS[sheetSnap];
 
   const [minOpacity, maxOpacity] = opacityRange;
 
@@ -310,17 +354,44 @@ export function MycelioMap({ center, zoom, opacityRange }: Props) {
         weekBest={weekBest}
         hasData={forecast.size > 0}
         loading={loading}
+        weather={weather}
+        hidden={!!selected}
+        snap={sheetSnap}
+        onSnapChange={setSheetSnap}
       />
 
-      {/* Dans le pouce, au-dessus du panneau de lecture : c'est le geste qu'on fait en
-          rentrant de sortie, souvent d'une main. */}
-      <div className="pointer-events-none absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+16rem)] z-20 lg:bottom-52">
+      {/* Dans le pouce, au-dessus de la feuille active — panneau de lecture ou fiche « Ce
+          coin » — quelle qu'elle soit : c'est le geste qu'on fait en rentrant de sortie,
+          souvent d'une main.
+
+          Caché au cran déplié, sur mobile : la feuille y occupe presque tout l'écran, et le
+          bouton se retrouverait sinon coincé contre les commandes du haut plutôt qu'au-dessus
+          du panneau. Ce n'est de toute façon pas le moment de ce geste-là — on est en train de
+          lire le détail, pas de rentrer d'une sortie. */}
+      <div
+        className={cn(
+          "pointer-events-none absolute right-3 z-30 transition-[bottom,opacity] duration-300 ease-out lg:!visible lg:!opacity-100",
+          (sheetSnap === 2 || (selected && cellExpanded)) && "max-lg:invisible max-lg:opacity-0",
+        )}
+        style={{ bottom: `calc(${activeSheetHeight} + 1rem + ${MOBILE_NAV_CLEARANCE})` }}
+      >
         <QuickOuting species={species} h3={selected} position={position} />
       </div>
 
-      <MapControls basemap={basemap} onBasemapChange={setBasemap} loading={loading} />
+      <MapControls
+        basemap={basemap}
+        onBasemapChange={setBasemap}
+        loading={loading}
+        onLocate={() => geolocateRef.current?.trigger()}
+      />
 
-      <CellSheet h3={selected} day={day} onClose={() => setSelected(null)} />
+      <CellSheet
+        h3={selected}
+        day={day}
+        onClose={closeCell}
+        expanded={cellExpanded}
+        onExpandedChange={setCellExpanded}
+      />
     </div>
   );
 }

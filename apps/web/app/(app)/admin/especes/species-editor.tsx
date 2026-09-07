@@ -130,6 +130,23 @@ function SpeciesDialog({
               defaultValue={species?.host_codes?.join(", ")}
             />
 
+            <Field
+              name="edge_affinity"
+              label="Affinité de lisière"
+              hint="De -1 (couvert profond, comme la trompette) à +1 (bord de peuplement, comme le cèpe). 0 : indifférente."
+              type="number"
+              step="0.1"
+              defaultValue={species?.edge_affinity}
+            />
+            <Field
+              name="twi_optimum"
+              label="Humidité topographique"
+              hint="Indice TWI recherché — 7 pour une pente drainée, 10 pour un fond de vallon. Vide : indifférente."
+              type="number"
+              step="0.5"
+              defaultValue={species?.twi_optimum}
+            />
+
             <Field name="ph_min" label="pH minimum" type="number" step="0.1" defaultValue={species?.ph_min} />
             <Field name="ph_max" label="pH maximum" type="number" step="0.1" defaultValue={species?.ph_max} />
             <Field name="alt_min_m" label="Altitude min. (m)" type="number" defaultValue={species?.alt_min_m} />

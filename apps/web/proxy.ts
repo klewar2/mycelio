@@ -59,6 +59,18 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+/**
+ * `api` est exclu, et c'est un gain de performance, pas un relâchement.
+ *
+ * Le proxy ne sait faire qu'une chose pour une route d'API : appeler `auth.getUser()` puis
+ * renvoyer un 307 vers /connexion, ce dont aucun `fetch()` ne saurait quoi faire. Les routes
+ * appellent toutes `requirePermission()`, qui refait exactement le même contrôle — donc on
+ * payait un aller-retour complet vers le serveur Auth pour rien, avant chaque appel de carte.
+ *
+ * Rien n'est perdu côté sécurité : le proxy n'a jamais été la frontière (voir plus haut), et
+ * `auth.getUser()` appelé dans la route rafraîchit le jeton aussi bien qu'ici — un Route Handler
+ * a le droit d'écrire des cookies, contrairement à un Server Component.
+ */
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

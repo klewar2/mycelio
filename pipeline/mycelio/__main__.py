@@ -147,6 +147,14 @@ def main(argv: list[str] | None = None) -> int:
     for dept in targets:
         total += run(dept)
 
+    # Une fois pour toute l'exécution, et non par département : la reconstruction est globale,
+    # et `cells_r7` porterait sinon, entre deux départements, un état que personne ne veut voir
+    # servi à la carte. C'est aussi le seul moment où `cells_r7` peut être remis à jour — le
+    # scoring quotidien, lui, ne reconstruit que ce qui dépend de `forecast`.
+    with db.connect() as conn:
+        conn.execute("select public.refresh_map_aggregates()")
+        conn.commit()
+
     print(f"\ntotal : {total} mailles dans public.cells")
     return 0
 

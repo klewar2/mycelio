@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     # Le calcul lui-même prend une douzaine de secondes ; la marge couvre la lenteur
     # éventuelle d'Open-Meteo.
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v5
