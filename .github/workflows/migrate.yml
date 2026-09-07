@@ -50,10 +50,21 @@ jobs:
       # `db push` est idempotent : il compare `supabase_migrations.schema_migrations` au dossier
       # et n'applique que ce qui manque. Un rejeu ne fait rien, et c'est ce qui permet de le
       # brancher sur chaque passage de la CI plutôt que sur un déclencheur manuel qu'on oublie.
+      #
+      # `--include-all` couvre les migrations dont l'horodatage précède la dernière appliquée.
+      # Sans lui, `db push` s'arrête net — « Found local migration files to be inserted before
+      # the last migration on remote database » — ce qui est le bon défaut en interactif, où ce
+      # message signale qu'on s'apprête à faire une bêtise, et le mauvais en CI, où le dossier
+      # `supabase/migrations` EST la référence. Le cas se produit dès que deux branches
+      # fusionnent dans le désordre, et il s'est produit ici parce que 025 à 027 avaient été
+      # appliquées à la main en sautant 024.
+      #
+      # Ce que le drapeau n'autorise pas : sauter une migration en silence. Ce qui manque est
+      # appliqué, et l'étape suivante vérifie qu'il ne reste rien.
       - name: supabase db push
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: pnpm exec supabase db push --db-url "$DATABASE_URL"
+        run: pnpm exec supabase db push --include-all --db-url "$DATABASE_URL"
 
       # Filet de dernier recours. `db push` peut rendre 0 sans avoir rien appliqué si le dossier
       # et la base ont divergé autrement — une migration passée à la main sans être enregistrée,
