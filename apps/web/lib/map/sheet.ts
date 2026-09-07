@@ -27,3 +27,19 @@ export const CELL_SHEET_HEIGHTS = ["44dvh", "76dvh"] as const;
 export function clampSnap(value: number, max: number): number {
   return Math.max(0, Math.min(max, value));
 }
+
+/**
+ * Feuille du point relevé, selon ce qu'elle contient.
+ *
+ * Trois hauteurs et non une seule, parce que le mode « attente » doit rendre la carte : c'est
+ * elle qu'on est en train de toucher pour poser le point. Une feuille à mi-hauteur pendant
+ * qu'on vise reviendrait à masquer la cible.
+ */
+export const POINT_SHEET_HEIGHTS = {
+  /** Rien de relevé encore : une barre, le champ de collage, et la carte reste dégagée. */
+  attente: "10.5rem",
+  /** Un point relevé : ses coordonnées, la copie, et de quoi l'enregistrer. */
+  releve: "min(62dvh, 23rem)",
+  /** Un spot enregistré : son nom, ses notes, ses coordonnées. */
+  spot: "min(52dvh, 19rem)",
+} as const;

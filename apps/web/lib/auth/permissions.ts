@@ -12,6 +12,7 @@ export const PERMISSIONS = [
   "map.view",
   "finds.create",
   "finds.export",
+  "spots.manage",
   "admin.access",
   "admin.users.manage",
   "admin.roles.manage",

@@ -6,26 +6,47 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapGL, {
   GeolocateControl,
   Layer,
+  Marker,
   NavigationControl,
   ScaleControl,
   Source,
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre";
+import { MapPin } from "lucide-react";
 import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
+import type { Coords } from "@/lib/map/coordinates";
 import { ALL_FAMILIES, groupByFamily, slugsFor, type Species } from "@/lib/map/families";
 import { HORIZON, snapBounds, toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
-import { CELL_SHEET_HEIGHTS, MOBILE_NAV_CLEARANCE, READING_SHEET_HEIGHTS } from "@/lib/map/sheet";
+import {
+  CELL_SHEET_HEIGHTS,
+  MOBILE_NAV_CLEARANCE,
+  POINT_SHEET_HEIGHTS,
+  READING_SHEET_HEIGHTS,
+} from "@/lib/map/sheet";
+import type { Spot } from "@/lib/map/spots";
 import type { WeatherSeries } from "@/lib/map/weather";
 import { RAMP } from "@/lib/scoring/levels";
 import { cn } from "@/lib/utils";
 import { ReadingPanel } from "./reading-panel";
 import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
+import { PointSheet } from "./point-sheet";
 import { QuickOuting } from "./quick-outing";
+
+/**
+ * Identités stables, hors du composant.
+ *
+ * `interactiveLayerIds` reconstruit à chaque rendu repose la liste dans MapLibre à chaque
+ * rendu. Ce n'est pas la propriété qui avait tué la carte en production — c'étaient les
+ * expressions de peinture — mais c'est la même erreur, et ce fichier a payé assez cher pour ne
+ * plus la refaire nulle part.
+ */
+const MAILLES_INTERACTIVES = ["mailles"];
+const AUCUNE_COUCHE_INTERACTIVE: string[] = [];
 
 type Props = {
   center: [number, number];
@@ -33,9 +54,19 @@ type Props = {
   opacityRange: [number, number];
   /** Rendues par le Server Component : la carte ne peut rien demander avant de les connaître. */
   species: Species[];
+  /** Les spots de l'utilisateur. Rendus côté serveur, donc posés dès le premier rendu. */
+  spots: Spot[];
+  canManageSpots: boolean;
 };
 
-export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
+export function MycelioMap({
+  center,
+  zoom,
+  opacityRange,
+  species,
+  spots,
+  canManageSpots,
+}: Props) {
   const mapRef = useRef<MapRef>(null);
   // Le type de l'instance n'est pas ré-exporté par la bibliothèque : on le dérive.
   const geolocateRef = useRef<React.ComponentRef<typeof GeolocateControl>>(null);
@@ -56,9 +87,26 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
   // suivre la hauteur de la feuille active pour ne jamais se retrouver sous elle.
   const [sheetSnap, setSheetSnap] = useState(1);
   const [cellExpanded, setCellExpanded] = useState(false);
+  // Relevé de coordonnées : un mode, parce qu'un tap ne peut pas vouloir dire deux choses.
+  // Tant qu'il est actif, toucher la carte pose un point au lieu d'ouvrir une maille — y
+  // compris pour en poser un autre, ce qui évite de ressortir puis rentrer dans le mode.
+  const [pointing, setPointing] = useState(false);
+  const [point, setPoint] = useState<Coords | null>(null);
+  // L'identifiant, et non l'objet : le spot est relu dans `spots` à chaque rendu, donc la
+  // feuille suit une renomination et se referme d'elle-même sur une suppression.
+  const [spotId, setSpotId] = useState<string | null>(null);
 
   const families = useMemo(() => groupByFamily(species), [species]);
   const slugs = useMemo(() => slugsFor(families, chosen), [families, chosen]);
+  /**
+   * Ce qui déclenche un chargement, c'est la LISTE demandée, pas l'identité du tableau.
+   *
+   * `species` arrive du Server Component : chaque revalidation de /carte — l'enregistrement
+   * d'un spot en provoque une — en rend un nouveau, donc de nouvelles `families`, donc de
+   * nouveaux `slugs`. Sur l'identité, l'effet repartirait à chaque écriture sans qu'une seule
+   * espèce ait changé. Sur la chaîne, il ne repart que si la sélection change vraiment.
+   */
+  const speciesParam = useMemo(() => slugs.join(","), [slugs]);
 
   /**
    * Mailles et scores, en un seul appel.
@@ -72,9 +120,9 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
    * et la barre de semaine ne déclenche aucun appel réseau.
    */
   useEffect(() => {
-    if (!view || slugs.length === 0) return;
+    if (!view || !speciesParam) return;
     let cancelled = false;
-    const query = `species=${encodeURIComponent(slugs.join(","))}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
+    const query = `species=${encodeURIComponent(speciesParam)}&bbox=${view.bbox.join(",")}&detailed=${view.detailed ? 1 : 0}`;
     fetch(`/api/map?${query}`)
       .then((r) => r.json())
       .then((data) => {
@@ -91,7 +139,7 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [slugs, view]);
+  }, [speciesParam, view]);
 
   // Une seule série pour toute la fenêtre, jamais par maille : la météo n'a pas de structure
   // plus fine que quelques kilomètres (voir pipeline/mycelio/weather.py), donc pas de sens à
@@ -264,10 +312,65 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
     return () => clearInterval(timer);
   }, [view, onMove]);
 
-  const onClick = useCallback((event: MapLayerMouseEvent) => {
-    const feature = event.features?.[0];
-    setSelected(feature ? (feature.properties?.h as string) : null);
-    setCellExpanded(false);
+  const onClick = useCallback(
+    (event: MapLayerMouseEvent) => {
+      // En mode relevé, la carte entière est un sélecteur de coordonnées : aucune maille ne
+      // s'ouvre, et un second tap déplace le point plutôt que d'annuler le mode.
+      if (pointing) {
+        setPoint({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+        return;
+      }
+      setSpotId(null);
+      const feature = event.features?.[0];
+      setSelected(feature ? (feature.properties?.h as string) : null);
+      setCellExpanded(false);
+    },
+    [pointing],
+  );
+
+  /**
+   * Clic droit, et appui long sur la plupart des navigateurs mobiles.
+   *
+   * Raccourci, jamais l'unique chemin : Safari sur iOS n'émet pas toujours `contextmenu` sur un
+   * canvas, et une fonctionnalité qui n'existerait que là serait invisible pour la moitié des
+   * téléphones. Le bouton de la barre d'outils reste la voie principale.
+   */
+  const onContextMenu = useCallback((event: MapLayerMouseEvent) => {
+    setSelected(null);
+    setSpotId(null);
+    setPointing(true);
+    setPoint({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+  }, []);
+
+  const togglePointing = useCallback(() => {
+    setPointing((current) => !current);
+    setPoint(null);
+    setSpotId(null);
+    setSelected(null);
+  }, []);
+
+  const closePoint = useCallback(() => {
+    setPointing(false);
+    setPoint(null);
+    setSpotId(null);
+  }, []);
+
+  /** Coordonnées saisies à la main : on suit le point plutôt que de laisser l'épingle hors écran. */
+  const onPointChange = useCallback((coords: Coords) => {
+    setPoint(coords);
+    try {
+      mapRef.current?.getMap().easeTo({ center: [coords.lng, coords.lat], duration: 600 });
+    } catch {
+      // Carte pas encore projetable : l'épingle est posée, elle sera visible au prochain
+      // déplacement. Jamais laisser MapLibre lever hors d'une pile qu'on contrôle.
+    }
+  }, []);
+
+  const openSpot = useCallback((spot: Spot) => {
+    setSpotId(spot.id);
+    setPointing(false);
+    setPoint(null);
+    setSelected(null);
   }, []);
 
   const closeCell = useCallback(() => {
@@ -278,9 +381,18 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
   // Suit la feuille actuellement montrée au premier plan — la fiche « Ce coin » quand une
   // maille est sélectionnée, sinon le panneau de lecture — pour que le bouton flottant reste
   // toujours juste au-dessus, comme dans le mockup.
-  const activeSheetHeight = selected
-    ? CELL_SHEET_HEIGHTS[cellExpanded ? 1 : 0]
-    : READING_SHEET_HEIGHTS[sheetSnap];
+  const openedSpot = spotId ? (spots.find((s) => s.id === spotId) ?? null) : null;
+  const pointSheetOpen = pointing || openedSpot !== null;
+
+  const activeSheetHeight = pointSheetOpen
+    ? openedSpot
+      ? POINT_SHEET_HEIGHTS.spot
+      : point
+        ? POINT_SHEET_HEIGHTS.releve
+        : POINT_SHEET_HEIGHTS.attente
+    : selected
+      ? CELL_SHEET_HEIGHTS[cellExpanded ? 1 : 0]
+      : READING_SHEET_HEIGHTS[sheetSnap];
 
   const [minOpacity, maxOpacity] = opacityRange;
 
@@ -336,8 +448,11 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
         onIdle={onMove}
         onMoveEnd={onMove}
         onClick={onClick}
-        interactiveLayerIds={["mailles"]}
-        cursor="grab"
+        onContextMenu={onContextMenu}
+        // Aucune couche interrogeable en mode relevé : sinon MapLibre repasse le curseur en
+        // « pointer » au survol d'un hexagone, et la mire disparaît là où on vise justement.
+        interactiveLayerIds={pointing ? AUCUNE_COUCHE_INTERACTIVE : MAILLES_INTERACTIVES}
+        cursor={pointing ? "crosshair" : "grab"}
         attributionControl={{ compact: true }}
         style={{ width: "100%", height: "100%" }}
       >
@@ -399,6 +514,39 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
             }}
           />
         </Source>
+
+        {/* Marqueurs DOM plutôt qu'une couche symbole : quelques dizaines de spots au maximum,
+            aucune image à charger dans le style, et un habillage qui suit les couleurs du
+            thème. Une couche symbole se justifierait à partir de quelques milliers de points —
+            et surtout, salir le style de la carte est exactement ce qui l'avait rendue muette
+            en production. */}
+        {spots.map((spot) => (
+          <Marker
+            key={spot.id}
+            longitude={spot.lng}
+            latitude={spot.lat}
+            anchor="bottom"
+            onClick={(event) => {
+              event.originalEvent?.stopPropagation();
+              openSpot(spot);
+            }}
+          >
+            <MapPin
+              className="size-7 cursor-pointer drop-shadow-md"
+              style={{ fill: "var(--primary)", color: "#FFFFFF" }}
+              strokeWidth={1.75}
+              aria-label={spot.label}
+            />
+          </Marker>
+        ))}
+
+        {/* Le point relevé, volontairement différent d'un spot : un repère, pas une épingle
+            plantée. Rien n'est encore enregistré, et le dessin doit le dire. */}
+        {point && !openedSpot ? (
+          <Marker longitude={point.lng} latitude={point.lat} anchor="center">
+            <span className="border-background bg-foreground block size-4 rounded-full border-[3px] shadow-md ring-1 ring-black/20" />
+          </Marker>
+        ) : null}
       </MapGL>
 
       <ReadingPanel
@@ -411,7 +559,7 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
         hasData={forecast.size > 0}
         loading={loading}
         weather={weather}
-        hidden={!!selected}
+        hidden={!!selected || pointSheetOpen}
         snap={sheetSnap}
         onSnapChange={setSheetSnap}
       />
@@ -427,7 +575,8 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
       <div
         className={cn(
           "pointer-events-none absolute right-3 z-30 transition-[bottom,opacity] duration-300 ease-out lg:!visible lg:!opacity-100",
-          (sheetSnap === 2 || (selected && cellExpanded)) && "max-lg:invisible max-lg:opacity-0",
+          (sheetSnap === 2 || (selected && cellExpanded) || pointSheetOpen) &&
+            "max-lg:invisible max-lg:opacity-0",
         )}
         style={{ bottom: `calc(${activeSheetHeight} + 1rem + ${MOBILE_NAV_CLEARANCE})` }}
       >
@@ -439,7 +588,19 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
         onBasemapChange={setBasemap}
         loading={loading}
         onLocate={() => geolocateRef.current?.trigger()}
+        pointing={pointing}
+        onTogglePointing={togglePointing}
       />
+
+      {pointSheetOpen ? (
+        <PointSheet
+          point={point}
+          spot={openedSpot}
+          canManage={canManageSpots}
+          onPointChange={onPointChange}
+          onClose={closePoint}
+        />
+      ) : null}
 
       <CellSheet
         h3={selected}

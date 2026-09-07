@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 
 import type { Species } from "@/lib/map/families";
+import type { Spot } from "@/lib/map/spots";
 
 // Importée depuis ce fragment statique, et pas seulement depuis le composant chargé
 // dynamiquement, pour qu'elle entre dans le bundle CSS initial plutôt que d'arriver après le
@@ -33,6 +34,8 @@ export function MapShell(props: {
   zoom: number;
   opacityRange: [number, number];
   species: Species[];
+  spots: Spot[];
+  canManageSpots: boolean;
 }) {
   return <MycelioMap {...props} />;
 }

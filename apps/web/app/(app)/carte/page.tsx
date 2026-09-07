@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MapShell } from "@/components/map/map-shell";
+import { can } from "@/lib/auth/can";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -11,7 +12,7 @@ function readSetting<T>(rows: { key: string; value: unknown }[], key: string, fa
 }
 
 export default async function CartePage() {
-  await requirePermission("map.view");
+  const ctx = await requirePermission("map.view");
 
   // Le cadrage et l'opacité viennent d'app_settings : les modifier dans /admin/parametres
   // change la carte sans redéploiement.
@@ -22,7 +23,7 @@ export default async function CartePage() {
   // deux allers-retours en série avant le premier hexagone. Les deux requêtes ci-dessous, elles,
   // partent ensemble.
   const supabase = await createClient();
-  const [settings, speciesRows] = await Promise.all([
+  const [settings, speciesRows, spots] = await Promise.all([
     supabase
       .from("app_settings")
       .select("key, value")
@@ -32,6 +33,14 @@ export default async function CartePage() {
       .select("id, slug, common_name_fr, scientific_name, family, notes_terrain")
       .eq("is_enabled", true)
       .order("sort_order"),
+    // Ses propres spots, et rien d'autre : la RLS ne rend jamais ceux d'un autre compte, pas
+    // même à un administrateur. Ils arrivent d'ici plutôt que d'un appel au montage parce
+    // qu'ils doivent être posés sur la carte au premier rendu — un marqueur qui apparaît une
+    // seconde après le reste se lit comme une erreur.
+    supabase
+      .from("spots")
+      .select("id, label, notes, lat, lng")
+      .order("created_at", { ascending: false }),
   ]);
 
   const rows = settings.data ?? [];
@@ -42,6 +51,8 @@ export default async function CartePage() {
       zoom={readSetting<number>(rows, "map.default_zoom", 9)}
       opacityRange={readSetting<[number, number]>(rows, "map.opacity_range", [0.35, 0.85])}
       species={speciesRows.data ?? []}
+      spots={spots.data ?? []}
+      canManageSpots={can(ctx, "spots.manage")}
     />
   );
 }

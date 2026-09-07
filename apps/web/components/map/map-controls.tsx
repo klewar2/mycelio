@@ -1,6 +1,6 @@
 "use client";
 
-import { HelpCircle, LocateFixed, Layers, Loader2 } from "lucide-react";
+import { Crosshair, HelpCircle, LocateFixed, Layers, Loader2 } from "lucide-react";
 import { BASEMAPS, type BasemapId } from "@/lib/map/basemaps";
 import { cn } from "@/lib/utils";
 import { MapGuide } from "./map-guide";
@@ -24,11 +24,16 @@ export function MapControls({
   onBasemapChange,
   loading,
   onLocate,
+  pointing,
+  onTogglePointing,
 }: {
   basemap: BasemapId;
   onBasemapChange: (id: BasemapId) => void;
   loading: boolean;
   onLocate: () => void;
+  /** Le mode relevé est-il actif ? Un tap sur la carte y pose un point au lieu d'ouvrir une maille. */
+  pointing: boolean;
+  onTogglePointing: () => void;
 }) {
   return (
     <>
@@ -60,6 +65,23 @@ export function MapControls({
               </button>
             ))}
           </div>
+
+          {/* Le relevé de point vit ici, à côté du fond de carte, et non dans la colonne de
+              droite qui est masquée sur desktop : relever des coordonnées se fait autant assis
+              devant un grand écran, pour préparer une sortie, que sur place. */}
+          <button
+            type="button"
+            onClick={onTogglePointing}
+            aria-pressed={pointing}
+            aria-label="Relever un point"
+            title="Relever un point"
+            className={cn(
+              "surface-float flex size-10 shrink-0 items-center justify-center transition-colors",
+              pointing ? "bg-accent text-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Crosshair className="size-4" aria-hidden />
+          </button>
 
           {loading ? (
             <span className="surface-float text-muted-foreground flex size-9 items-center justify-center">

@@ -592,6 +592,44 @@ export type Database = {
         }
         Relationships: []
       }
+      spots: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          lat: number
+          lng: number
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          lat: number
+          lng: number
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          lat?: number
+          lng?: number
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spots_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weather_grid: {
         Row: {
           id: number

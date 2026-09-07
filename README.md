@@ -24,6 +24,7 @@ le filtrage GBIF en CC-BY-NC.
 | 5 | Panneau d'inspection, conseils terrain | ✅ |
 | 6 | Carnet de sorties, export GPX | ✅ |
 | 6 bis | Lecture grand public : familles, échelle en toutes lettres, barre de semaine | ✅ |
+| 6 ter | Spots personnels, relevé de coordonnées pour un GPS | ✅ |
 | 7 | LightGBM, validation spatiale | après une saison de terrain |
 
 **Chiffres actuels** — 86 137 mailles H3 en résolution 9 (~280 m de largeur), 8 espèces
@@ -105,12 +106,12 @@ mycelio/
 │   │   ├── (app)/admin/         comptes, droits, paramètres, espèces, audit
 │   │   └── api/                 map, cell/[h3], weather, outings/gpx
 │   ├── components/
-│   │   ├── map/                 MapLibre, panneau de lecture, inspection, carotte de terrain
+│   │   ├── map/                 MapLibre, panneau de lecture, inspection, spots, terrain
 │   │   ├── admin/               matrice de droits, formulaire générique
 │   │   └── shell/               navigation, thème, bandeau de sécurité
 │   ├── lib/
 │   │   ├── auth/                can(), session, gardes de route
-│   │   ├── map/                 fonds IGN, hexagones, familles d'espèces
+│   │   ├── map/                 fonds IGN, hexagones, familles, coordonnées GPS
 │   │   ├── scoring/             paliers nommés — la seule échelle vue par l'utilisateur
 │   │   ├── supabase/            clients navigateur, serveur, admin
 │   │   └── terrain/             règles de conseil de terrain
@@ -143,7 +144,7 @@ Trois rôles, et un seul écran pour les composer.
 | Rôle | Ce qu'il fait |
 |---|---|
 | `lecture` | consulte la carte |
-| `ecriture` | + tient son carnet de sorties, exporte ses traces GPX |
+| `ecriture` | + tient son carnet de sorties et ses spots, exporte ses traces GPX |
 | `admin` | + comptes, droits, paramètres, espèces, journal d'audit |
 
 Ce tableau n'est qu'un **défaut** : la répartition réelle vit dans la table `role_permissions`,
@@ -364,9 +365,11 @@ ressort, dans la RLS. En App Router, un contrôle posé sur le seul `layout.tsx`
 pages, qui se rendent indépendamment lors des navigations douces.
 
 **6. Les administrateurs ne voient pas les relevés privés des autres.** Aucune politique de
-`outings` ou `finds` n'appelle `can()`. Un super-pouvoir sur les comptes n'est pas un
-super-pouvoir sur les spots — le test pgTAP 08 le vérifie explicitement, sur un acteur qui
-détient pourtant *toutes* les permissions de la matrice.
+`outings`, `finds` ou `spots` n'appelle `can()` en lecture. Un super-pouvoir sur les comptes
+n'est pas un super-pouvoir sur les coins — les tests pgTAP 08 et 09 le vérifient explicitement,
+sur un acteur qui détient pourtant *toutes* les permissions de la matrice. La table `spots` est
+même un cran plus stricte que le carnet : elle n'a pas de mode « partagé », donc la clause
+`user_id = auth.uid()` y est la seule visibilité qui existe.
 
 **7. L'exposition n'est jamais stockée en degrés.** 359° et 1° sont voisins sur le terrain mais
 aux antipodes pour un modèle : on stocke `northness` et `eastness`, et la recomposition n'a lieu
@@ -421,6 +424,15 @@ centaines de mètres, sur un écran que le client entoure déjà de 15 % de marg
 `st_intersects` coûtait 372 ms contre 27 pour écarter 4 % de lignes. Le sens de l'erreur est le
 bon : rendre une maille de trop ne se voit pas, en oublier une se paierait sur le terrain.
 
+**16. Ce qui déclenche un chargement de mailles est une CHAÎNE, jamais l'identité d'un tableau.**
+Les espèces descendent du Server Component : toute revalidation de `/carte` — enregistrer un
+spot en provoque une — en rend un nouveau tableau, donc de nouvelles familles, donc de nouveaux
+slugs. Un effet qui dépend de cette identité repart à chaque écriture sans qu'une seule espèce
+ait changé, et redemande toute la fenêtre. `speciesParam` est cette chaîne. Même raison de fond
+que la mémoïsation des expressions de peinture, quelques lignes plus bas dans le même fichier :
+en React, une valeur reconstruite à l'identique n'est pas la même valeur, et sur une carte cela
+se paie en requêtes ou en silence.
+
 Le reste des pièges est documenté à l'endroit du code concerné.
 
 ---
@@ -428,10 +440,12 @@ Le reste des pièges est documenté à l'endroit du code concerné.
 ## Tests et CI
 
 - **Tests pgTAP** (`pnpm db:test`) : invariants de rôles, RLS de toutes les tables, immuabilité
-  du journal d'audit, confidentialité du carnet. Le fichier `01_rls_enabled.sql` vérifie par
+  du journal d'audit, confidentialité du carnet et des spots. Le fichier `01_rls_enabled.sql` vérifie par
   introspection que **toute** table de `public` est sous RLS — une table ajoutée sans politique
   fait échouer la CI.
-- **Tests unitaires Vitest** sur `can()`, la seule logique d'autorisation pure.
+- **Tests unitaires Vitest** sur `can()`, l'arrondi d'emprise (`snapBounds`) et l'analyse des
+  coordonnées collées (`parseCoords`) — trois fonctions pures dont une erreur ne se verrait
+  nulle part ailleurs.
 - **CI GitHub Actions** : migrations, pgTAP, dérive des types générés, `tsc`, `eslint`,
   `vitest`, `next build`.
 - **Scoring quotidien** à 5 h UTC (`daily-score.yml`), actif dès que le dépôt est sur GitHub avec
