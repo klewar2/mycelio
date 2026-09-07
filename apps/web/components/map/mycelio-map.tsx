@@ -200,10 +200,18 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
       // moindre panoramique changeait l'URL et redemandait tout. Arrondie, elle ne change qu'en
       // franchissant une case — d'où un déplacement servi par le cache la plupart du temps.
       const bbox = snapBounds(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
+      // En dessous de ce zoom, une maille de 280 m fait moins d'un pixel : on bascule sur le
+      // parent en résolution 7, agrégé côté serveur.
+      //
+      // Lu ICI, dans le try, et surtout PAS dans la fonction passée à `setView` : React appelle
+      // cette fonction quand il veut, hors de la pile d'appel courante. Une exception levée par
+      // MapLibre à ce moment-là — et `getZoom()` lève tant que la matrice de projection n'est
+      // pas prête — passe à côté du try/catch, remonte dans la file de rendu de MapLibre et la
+      // laisse bloquée sur « already running ». La carte s'affiche alors normalement et refuse
+      // tout déplacement, sans la moindre erreur en console. C'est le piège décrit plus haut,
+      // et il coûte une carte morte en production pour une lecture déplacée de trois lignes.
+      const detailed = map.getZoom() >= 11;
       setView((current) => {
-        // En dessous de ce zoom, une maille de 280 m fait moins d'un pixel : on bascule sur le
-        // parent en résolution 7, agrégé côté serveur.
-        const detailed = map.getZoom() >= 11;
         // Identité référentielle : `view` est une dépendance d'effet. Sans cette comparaison,
         // chaque `idle` — il y en a un par inertie de glissement — rendrait un objet neuf et
         // relancerait la requête que l'arrondi vient précisément d'éviter.
@@ -233,7 +241,28 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
    */
   const onLoad = useCallback(() => {
     geolocateRef.current?.trigger();
-  }, []);
+    onMove();
+  }, [onMove]);
+
+  /**
+   * Première emprise, sans dépendre d'aucun événement de MapLibre.
+   *
+   * `load` comme `idle` supposent tous deux un style que MapLibre juge chargé. Quand cette
+   * condition ne se réalise pas — et elle peut ne jamais se réaliser — aucun des deux n'est
+   * émis : la carte se dessine, se déplace, et l'application n'apprend jamais ce qu'elle
+   * regarde. C'est arrivé en production, sans une erreur en console.
+   *
+   * On ne fait donc plus reposer le démarrage sur un événement. On réessaie jusqu'à ce que
+   * `getBounds()` réponde, ce qui n'exige que le conteneur dimensionné. `onMove` est idempotent
+   * — il compare avant de remplacer — donc une tentative de trop ne coûte rien, et l'arrêt sur
+   * `view` garantit qu'on ne boucle pas indéfiniment.
+   */
+  useEffect(() => {
+    if (view) return;
+    onMove();
+    const timer = setInterval(onMove, 300);
+    return () => clearInterval(timer);
+  }, [view, onMove]);
 
   const onClick = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0];
@@ -255,21 +284,39 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
 
   const [minOpacity, maxOpacity] = opacityRange;
 
-  const colorExpression = stops
-    ? ["interpolate", ["linear"], ["get", `s${day}`], ...stops.flatMap((s, i) => [s, RAMP[i]])]
-    : RAMP[2];
+  /**
+   * Mémoïsées, et ce n'est pas une micro-optimisation.
+   *
+   * react-map-gl repose les propriétés de peinture dès que leur identité change. Reconstruites
+   * à chaque rendu, ces deux expressions salissaient donc le style à chaque rendu — et un style
+   * perpétuellement sale ne « charge » jamais au sens de MapLibre, qui n'émet alors PLUS JAMAIS
+   * `idle`. Or c'est `idle` qui relève l'emprise : la carte s'affichait, se déplaçait, et ne
+   * demandait aucune donnée. Symptôme observé en production : hexagones absents et « Lecture du
+   * secteur… » figé, sans une erreur en console.
+   */
+  const colorExpression = useMemo(
+    () =>
+      stops
+        ? ["interpolate", ["linear"], ["get", `s${day}`], ...stops.flatMap((s, i) => [s, RAMP[i]])]
+        : RAMP[2],
+    [stops, day],
+  );
 
-  const opacityExpression = stops
-    ? [
-        "interpolate",
-        ["linear"],
-        ["get", `s${day}`],
-        stops[0],
-        minOpacity,
-        stops[stops.length - 1],
-        maxOpacity,
-      ]
-    : minOpacity;
+  const opacityExpression = useMemo(
+    () =>
+      stops
+        ? [
+            "interpolate",
+            ["linear"],
+            ["get", `s${day}`],
+            stops[0],
+            minOpacity,
+            stops[stops.length - 1],
+            maxOpacity,
+          ]
+        : minOpacity,
+    [stops, day, minOpacity, maxOpacity],
+  );
 
   return (
     <div className="fixed inset-0 lg:left-16">
@@ -278,7 +325,16 @@ export function MycelioMap({ center, zoom, opacityRange, species }: Props) {
         initialViewState={{ longitude: center[1], latitude: center[0], zoom }}
         mapStyle={style}
         onLoad={onLoad}
+        // `idle` ET `moveend`. `idle` seul est un point de défaillance unique : il n'est émis
+        // que si MapLibre considère son style entièrement chargé, et un style qu'on salit sans
+        // arrêt ne l'est jamais. La carte reste alors parfaitement utilisable — elle se déplace,
+        // elle se dessine — mais l'application ne demande jamais ses mailles, ce qui est le pire
+        // des deux mondes : rien à voir, et rien qui signale pourquoi.
+        //
+        // `moveend` ne dépend, lui, que du déplacement. Les deux événements posent la MÊME
+        // emprise arrondie, et `setView` compare avant de remplacer : le doublon ne coûte rien.
         onIdle={onMove}
+        onMoveEnd={onMove}
         onClick={onClick}
         interactiveLayerIds={["mailles"]}
         cursor="grab"
