@@ -1,6 +1,7 @@
 """Exécution quotidienne du scoring.
 
     uv run python -m mycelio.score
+    uv run python -m mycelio.score --rattrapage   # seulement si la journée n'a rien produit
 
 Lit `cells` et `species`, interroge Open-Meteo, calcule un score par maille, espèce et jour,
 puis remplace intégralement `forecast`.
@@ -12,8 +13,10 @@ l'historique ferait grossir la base sans limite pour rien. Effet de bord bienven
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import io
+import sys
 import time
 import uuid
 
@@ -249,5 +252,44 @@ def run() -> int:
         raise
 
 
-if __name__ == "__main__":
+def scored_today() -> bool:
+    """La journée a-t-elle déjà son scoring ?
+
+    En jours de Paris et non d'UTC : c'est la journée du cueilleur qui compte, et c'est elle
+    que le fuseau de la prévision suit déjà (voir weather.fetch).
+    """
+    with connect() as conn:
+        row = conn.execute(
+            """
+            select 1 from public.forecast_runs
+            where status = 'success'
+              and (finished_at at time zone 'Europe/Paris')::date
+                  = (now() at time zone 'Europe/Paris')::date
+            limit 1
+            """
+        ).fetchone()
+    return row is not None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Recalcule les scores du jour")
+    parser.add_argument(
+        "--rattrapage",
+        action="store_true",
+        help="ne recalcule que si aucune exécution n'a réussi aujourd'hui",
+    )
+    args = parser.parse_args(argv)
+
+    # Le scoring est idempotent — le relancer ne casserait rien. Ce qu'on évite ici, c'est de
+    # consommer le quota Open-Meteo et d'empiler dans `forecast_runs` des lignes qui ne
+    # racontent rien, alors que le créneau du matin a fini par passer.
+    if args.rattrapage and scored_today():
+        print("scores déjà calculés aujourd'hui — rattrapage inutile")
+        return 0
+
     run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,12 +1,25 @@
 name: Scoring quotidien
 
-# 05h00 UTC : la prévision Open-Meteo du jour est publiée, et personne ne consulte encore.
+# Deux créneaux, et non un seul.
 #
-# Effet de bord bienvenu : cette écriture quotidienne empêche la mise en veille automatique du
-# projet Supabase gratuit, qui s'endort après une semaine d'inactivité.
+# GitHub ne promet pas l'heure d'un `schedule` : il met le déclenchement en file et l'exécute
+# quand sa charge le permet. Mesuré sur ce dépôt en août-septembre 2026, avec un cron demandé à
+# 05h00 UTC : une demi-heure de retard les bons jours, mais 09h50, 11h27, 16h16 et jusqu'à
+# 17h12 les mauvais. Un cueilleur qui ouvre la carte à 8h y voyait alors les scores de la
+# veille, sans que rien ne l'indique.
+#
+# On ne peut pas forcer l'ordonnanceur, seulement lui laisser deux chances. Le second créneau
+# rattrape le premier et s'arrête de lui-même si celui-ci a fini par passer (--rattrapage).
+# Les minutes ne sont pas rondes non plus : l'heure pile concentre les crons de la plateforme
+# entière, et c'est là que la file est la plus longue.
+#
+# 05h17 UTC : la prévision Open-Meteo du jour est publiée depuis peu, et personne ne consulte
+# encore. Effet de bord bienvenu, cette écriture quotidienne empêche la mise en veille
+# automatique du projet Supabase gratuit, qui s'endort après une semaine d'inactivité.
 on:
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "17 5 * * *"
+    - cron: "43 8 * * *"
   workflow_dispatch:
 
 jobs:
@@ -32,7 +45,9 @@ jobs:
         working-directory: pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: uv run python -m mycelio.score
+          # Vide pour un déclenchement manuel : on veut alors recalculer sans condition.
+          RATTRAPAGE: ${{ github.event.schedule == '43 8 * * *' && '--rattrapage' || '' }}
+        run: uv run python -m mycelio.score $RATTRAPAGE
 
       # Le pipeline trace lui-même ses échecs dans forecast_runs, mais un run qui n'atteint
       # jamais la base ne laisse aucune trace : d'où cette alerte de dernier recours.

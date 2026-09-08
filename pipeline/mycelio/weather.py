@@ -51,8 +51,24 @@ CHUNK = 60
 # remontait jusqu'en haut, marquait le run en échec dans `forecast_runs`, et la carte gardait
 # les scores de la veille sans que rien ne le dise. Sur trois requêtes le risque était faible ;
 # sur seize il devient certain à la première minute chargée.
-RETRIES = 4
 COOLDOWN = 65.0
+
+# La panne réseau est l'autre façon de perdre un run, et elle veut l'attente inverse. Le
+# 8 septembre 2026, la toute première requête du cron n'a jamais fini sa poignée de main TLS :
+# le pipeline a attendu le délai plein, renoncé, et laissé `weather_grid` vide pour la journée.
+# Une coupure de ce genre ne se règle pas en patientant une minute — elle passe ou ne passe pas
+# tout de suite, et quelques secondes suffisent à laisser le temps à une route de se rétablir.
+NETWORK_BACKOFF = 5.0
+
+# Deux délais et non un seul. Un bloc de 60 points sur une centaine de jours met parfois une
+# minute à se calculer côté Open-Meteo, d'où la lecture large ; l'ouverture de la connexion,
+# elle, aboutit en une seconde ou n'aboutira pas. Les confondre, c'est ce qui a transformé une
+# coupure de réseau en trois minutes d'attente sans reprise possible.
+TIMEOUT = httpx.Timeout(180.0, connect=15.0)
+
+# Le nombre d'essais est commun aux deux pannes, faute de savoir laquelle viendra. Cinq tient
+# dans les 25 minutes du cron même au pire cas — quatre attentes de quota à la file.
+RETRIES = 5
 
 DAILY = ["precipitation_sum", "temperature_2m_max", "temperature_2m_min", "weathercode"]
 HOURLY = ["soil_temperature_7_to_28cm", "soil_moisture_7_to_28cm"]
@@ -89,23 +105,50 @@ def _grid_points(lats: np.ndarray, lngs: np.ndarray) -> np.ndarray:
 
 
 def _get(params: dict[str, str]) -> object:
-    """Une requête, avec attente et reprise sur dépassement de quota.
+    """Une requête, avec reprise sur dépassement de quota ET sur incident réseau.
 
-    Seul le 429 est repris, et par une attente franche d'une minute : c'est ce que répond
-    l'API elle-même, et un repli exponentiel plus court ne ferait que consommer le quota de la
-    minute suivante. Toute autre erreur remonte — un 400 sur un nom de variable ne s'arrange pas
-    en attendant.
+    Deux pannes, deux attentes. Le 429 demande une minute franche : c'est ce que répond l'API
+    elle-même, et un repli plus court ne ferait que consommer le quota de la minute suivante.
+    La coupure — connexion qui n'aboutit pas, 502 d'un frontal — demande l'inverse : on
+    réessaie presque tout de suite, en allongeant un peu à chaque tour.
+
+    Le reste remonte tel quel : un 400 sur un nom de variable ne s'arrange pas en attendant.
     """
     for attempt in range(RETRIES):
-        response = httpx.get(API, params=params, timeout=180.0)
-        if response.status_code != 429:
-            response.raise_for_status()
-            return response.json()
-        if attempt < RETRIES - 1:
+        final = attempt == RETRIES - 1
+        try:
+            response = httpx.get(API, params=params, timeout=TIMEOUT)
+        except httpx.TransportError as error:
+            # Couvre la connexion refusée, la poignée de main TLS qui expire, la lecture
+            # interrompue en cours de route — tout ce qui n'a jamais produit de réponse HTTP.
+            if final:
+                raise
+            wait = NETWORK_BACKOFF * (attempt + 1)
+            print(f"  Open-Meteo injoignable ({type(error).__name__}), reprise dans {wait:.0f}s")
+            time.sleep(wait)
+            continue
+
+        if response.status_code == 429:
+            if final:
+                response.raise_for_status()
             print(f"  quota Open-Meteo atteint, reprise dans {COOLDOWN:.0f}s")
             time.sleep(COOLDOWN)
-    response.raise_for_status()
-    raise RuntimeError("quota Open-Meteo dépassé après plusieurs reprises")
+            continue
+
+        if response.status_code >= 500:
+            # Une panne passagère du service, pas une requête fautive : elle se reprend comme
+            # une coupure réseau, dont elle a la durée de vie.
+            if final:
+                response.raise_for_status()
+            wait = NETWORK_BACKOFF * (attempt + 1)
+            print(f"  Open-Meteo en erreur {response.status_code}, reprise dans {wait:.0f}s")
+            time.sleep(wait)
+            continue
+
+        response.raise_for_status()
+        return response.json()
+
+    raise RuntimeError("Open-Meteo inatteignable après plusieurs reprises")
 
 
 def fetch(lats: np.ndarray, lngs: np.ndarray, past_days: int, forecast_days: int) -> WeatherGrid:
