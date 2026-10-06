@@ -146,7 +146,23 @@ def _get(params: dict[str, str]) -> object:
             continue
 
         response.raise_for_status()
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as error:
+            # Un 200 dont le corps n'est pas du JSON valide : la réponse est servie en flux
+            # (transfert fragmenté, compressé, trois mégaoctets le bloc), et il arrive qu'elle
+            # s'interrompe en route sans que la connexion le signale. Le 6 octobre 2026, le
+            # cron de 12h01 a lu `Expecting ',' delimiter` au 372 588e caractère, et ce
+            # JSONDecodeError, qu'aucune reprise n'attendait, a tué le run. Les 60 points d'un
+            # bloc se redemandent d'un seul coup : c'est une coupure comme une autre.
+            if final:
+                raise
+            wait = NETWORK_BACKOFF * (attempt + 1)
+            print(
+                f"  Open-Meteo a rendu un JSON tronqué ({len(response.content)} octets : "
+                f"{error}), reprise dans {wait:.0f}s"
+            )
+            time.sleep(wait)
 
     raise RuntimeError("Open-Meteo inatteignable après plusieurs reprises")
 
