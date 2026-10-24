@@ -62,8 +62,9 @@ export function MapGuide({ trigger }: { trigger: React.ReactNode }) {
               Chaque barre est un jour, du plus proche au plus lointain, et sa hauteur donne les
               chances du <strong className="text-foreground font-medium">meilleur coin</strong> de
               la zone affichée ce jour-là. La phrase au-dessus dit la même chose en toutes lettres,
-              pour le jour choisi. Une barre qui monte, c&apos;est une poussée qui arrive : il vaut
-              souvent mieux attendre deux jours que partir tout de suite.
+              pour le jour choisi. Une barre qui monte, ce sont des conditions qui s&apos;améliorent
+              (pluie des deux à trois dernières semaines, sol à bonne température, saison) : il
+              vaut souvent mieux attendre deux jours que partir tout de suite.
             </p>
           </section>
 
@@ -77,6 +78,12 @@ export function MapGuide({ trigger }: { trigger: React.ReactNode }) {
 
           <section>
             <h3 className="text-foreground font-medium">Ce que la carte ne fait pas</h3>
+            <p className="text-muted-foreground mt-1.5 text-xs">
+              Elle ne voit pas les champignons. « Très bonnes chances » veut dire que la météo et
+              le terrain ressemblent à ceux des jours où l&apos;on en a trouvé, pas que quelqu&apos;un
+              en a vu cette semaine. Même dans les meilleures conditions, un coin peut être vide —
+              déjà ramassé, ou simplement sans mycélium à cet endroit.
+            </p>
             <p className="text-muted-foreground mt-1.5 text-xs">
               Elle ne reconnaît aucun champignon et ne dit jamais si l&apos;un est comestible. Une
               récolte se fait valider par un pharmacien ou une société mycologique, toujours.

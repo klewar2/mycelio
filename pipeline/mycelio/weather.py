@@ -104,7 +104,7 @@ def _grid_points(lats: np.ndarray, lngs: np.ndarray) -> np.ndarray:
     return np.array(sorted(keys), dtype="float64")
 
 
-def _get(params: dict[str, str]) -> object:
+def get(params: dict[str, str], api: str = API) -> object:
     """Une requête, avec reprise sur dépassement de quota ET sur incident réseau.
 
     Deux pannes, deux attentes. Le 429 demande une minute franche : c'est ce que répond l'API
@@ -117,7 +117,7 @@ def _get(params: dict[str, str]) -> object:
     for attempt in range(RETRIES):
         final = attempt == RETRIES - 1
         try:
-            response = httpx.get(API, params=params, timeout=TIMEOUT)
+            response = httpx.get(api, params=params, timeout=TIMEOUT)
         except httpx.TransportError as error:
             # Couvre la connexion refusée, la poignée de main TLS qui expire, la lecture
             # interrompue en cours de route — tout ce qui n'a jamais produit de réponse HTTP.
@@ -189,7 +189,7 @@ def fetch(lats: np.ndarray, lngs: np.ndarray, past_days: int, forecast_days: int
             "forecast_days": str(forecast_days),
             "timezone": "Europe/Paris",
         }
-        payload = _get(params)
+        payload = get(params)
         # Une coordonnée unique renvoie un objet, plusieurs renvoient une liste.
         blocks = payload if isinstance(payload, list) else [payload]
 

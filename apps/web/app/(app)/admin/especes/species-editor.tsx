@@ -180,7 +180,8 @@ function SpeciesDialog({
             />
             <Field
               name="rain_optimum_mm"
-              label="Pluie optimale (mm)"
+              label="Pluie suffisante (mm)"
+              hint="Cumul à partir duquel la pluie n'est plus ce qui manque. Au-delà, plus de pluie ne pénalise pas."
               type="number"
               step="0.1"
               defaultValue={species?.rain_optimum_mm}

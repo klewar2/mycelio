@@ -45,12 +45,8 @@ def load_inputs():
     return cells, species
 
 
-def run() -> int:
-    started = time.time()
-    run_id = uuid.uuid4()
-
-    horizon = int(get_setting("scoring.forecast_horizon_days"))
-    weights = scoring.Weights(
+def load_weights() -> scoring.Weights:
+    return scoring.Weights(
         host_match=float(get_setting("scoring.host_match_weight")),
         host_generic=float(get_setting("scoring.host_generic_weight")),
         forest_share=float(get_setting("scoring.forest_share_weight")),
@@ -65,6 +61,56 @@ def run() -> int:
         # qu'on ait à toucher au moteur.
         generic_host_codes=frozenset(get_setting("scoring.generic_host_codes")),
     )
+
+
+def temporal_factor(
+    sp: pd.Series,
+    weights: scoring.Weights,
+    grid: weather.WeatherGrid,
+    day: int,
+    altitude: np.ndarray,
+    assign: np.ndarray,
+) -> np.ndarray:
+    """Phénologie × météo d'une espèce, un jour donné, pour chaque maille.
+
+    C'est toute la partie du score qui dit QUAND — l'habitat, lui, dit où. Elle est isolée ici
+    pour que `mycelio.backtest` juge exactement le calcul du cron, et non une copie qui
+    divergerait au premier réglage.
+    """
+    lag = int(sp["rain_lag_days"] or 14)
+    rain_opt = float(sp["rain_optimum_mm"] or weights.rain_optimum_mm)
+
+    # Pluie utile : le cumul sur la fenêtre, décalé du délai propre à l'espèce.
+    # C'est la pluie d'il y a deux semaines qui fait le cèpe d'aujourd'hui.
+    end = max(day - lag, 0)
+    start = max(end - weights.rain_window_days, 0)
+    cumulative = grid.rain[:, start : end + 1].sum(axis=1)[assign]
+
+    phenology = scoring.phenology_factor(
+        int(grid.dates[day].dayofyear),
+        altitude,
+        grid.soil_temp[:, day][assign],
+        season_start=sp["season_start_doy"],
+        season_end=sp["season_end_doy"],
+        temp_opt=sp["soil_temp_opt_c"],
+        temp_tol=sp["soil_temp_tol_c"],
+    )
+    meteo = scoring.weather_factor(
+        cumulative,
+        grid.soil_moisture[:, day][assign],
+        grid.amplitude[:, day][assign],
+        rain_optimum=rain_opt,
+        weights=weights,
+    )
+    return phenology * meteo
+
+
+def run() -> int:
+    started = time.time()
+    run_id = uuid.uuid4()
+
+    horizon = int(get_setting("scoring.forecast_horizon_days"))
+    weights = load_weights()
 
     with connect() as conn:
         conn.execute(
@@ -131,8 +177,6 @@ def run() -> int:
             conf = scoring.confidence(soil_ph, matched, forest_share)
 
             daily: list[np.ndarray] = []
-            lag = int(sp["rain_lag_days"] or 14)
-            rain_opt = float(sp["rain_optimum_mm"] or weights.rain_optimum_mm)
 
             for offset in range(horizon + 1):
                 target = today + pd.Timedelta(days=offset)
@@ -141,30 +185,8 @@ def run() -> int:
                 except KeyError:
                     continue
 
-                # Pluie utile : le cumul sur la fenêtre, décalé du délai propre à l'espèce.
-                # C'est la pluie d'il y a deux semaines qui fait le cèpe d'aujourd'hui.
-                end = max(day - lag, 0)
-                start = max(end - weights.rain_window_days, 0)
-                cumulative = grid.rain[:, start : end + 1].sum(axis=1)[assign]
-
-                phenology = scoring.phenology_factor(
-                    int(target.dayofyear),
-                    altitude,
-                    grid.soil_temp[:, day][assign],
-                    season_start=sp["season_start_doy"],
-                    season_end=sp["season_end_doy"],
-                    temp_opt=sp["soil_temp_opt_c"],
-                    temp_tol=sp["soil_temp_tol_c"],
-                )
-                meteo = scoring.weather_factor(
-                    cumulative,
-                    grid.soil_moisture[:, day][assign],
-                    grid.amplitude[:, day][assign],
-                    rain_optimum=rain_opt,
-                    weights=weights,
-                )
-
-                daily.append(np.clip(habitat * phenology * meteo, 0.0, 1.0))
+                when = temporal_factor(sp, weights, grid, day, altitude, assign)
+                daily.append(np.clip(habitat * when, 0.0, 1.0))
 
             if not daily:
                 continue

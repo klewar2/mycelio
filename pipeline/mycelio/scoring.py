@@ -230,9 +230,18 @@ def weather_factor(
 ) -> np.ndarray:
     """Déclencheur de fructification : pluie utile, sol humide, chute d'amplitude thermique."""
 
-    # Trop peu de pluie ne déclenche rien ; beaucoup trop gorge le sol et arrête la
-    # fructification. D'où une cloche et non une fonction croissante.
-    rain = gaussian(rain_cumulative, rain_optimum, max(rain_optimum * 0.6, 10.0))
+    # Courbe saturante, et non plus une cloche. La cloche partait d'une intuition — « trop de
+    # pluie gorge le sol et arrête la fructification » — que les observations démentent : sur
+    # les cèpes datés du Sud-Ouest (iNaturalist et Observation.org, 2022-2025), la pluie des 10
+    # à 24 jours précédents vaut 48 mm en médiane et 113 mm au neuvième décile. La cloche
+    # centrée sur 45 mm notait 0,04 ce dernier cas, c'est-à-dire qu'elle éteignait les
+    # meilleures journées ; et elle laissait 0,25 à une fenêtre SANS une goutte, donc des
+    # « bonnes chances » en pleine sécheresse. Ce seul changement fait passer la partie
+    # temporelle du score de 0,58 à 0,66 d'AUC sur 462 observations (`mycelio.backtest`).
+    #
+    # `rain_optimum` devient le cumul à partir duquel la pluie cesse d'être le facteur limitant :
+    # il donne 0,86, le double 0,98, et une fenêtre sèche zéro.
+    rain = 1.0 - np.exp(-2.0 * np.clip(rain_cumulative, 0.0, None) / max(rain_optimum, 1.0))
 
     # Humidité de l'horizon 7–28 cm : c'est elle, et non la pluie tombée, qui commande.
     moisture = np.clip(soil_moisture / 0.30, 0.0, 1.0)

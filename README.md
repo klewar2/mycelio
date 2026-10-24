@@ -87,6 +87,7 @@ Le tout premier se crée donc hors application, depuis Supabase Studio
 | `pnpm typecheck` / `lint` / `test` | qualité |
 | `uv run python -m mycelio [dept…]` | construit la grille et ses attributs |
 | `uv run python -m mycelio.score` | recalcule les scores |
+| `uv run python -m mycelio.backtest` | juge le « quand » du modèle sur des observations réelles |
 
 Après toute migration touchant au schéma, relancer `pnpm db:types` : la CI compare le fichier
 généré à celui du dépôt et échoue s'ils divergent.
@@ -127,6 +128,7 @@ mycelio/
 │       ├── protected.py         espaces protégés → masquage réglementaire
 │       ├── weather.py           Open-Meteo → pluie, sol, amplitude
 │       ├── scoring.py           moteur de règles expertes
+│       ├── backtest.py          le modèle face aux observations datées
 │       └── upload.py            chargement par COPY
 ├── supabase/
 │   ├── migrations/              schéma, fonctions, triggers, RLS, seeds
@@ -233,7 +235,7 @@ Sans hôte mycorhizien compatible, il n'y a pas de cèpe, quelle que soit la mé
   d'altitude, indice d'humidité topographique, effet de lisière, exposition
 - **phénologie** — fenêtre saisonnière circulaire, correction d'altitude (~7 jours par 100 m),
   cloche sur la température du sol
-- **météo** — cloche sur la pluie cumulée décalée du délai propre à l'espèce, humidité de
+- **météo** — courbe saturante sur la pluie cumulée décalée du délai propre à l'espèce, humidité de
   l'horizon 7–28 cm, amplitude thermique nocturne
 
 **L'appariement d'hôte se fait à trois niveaux, pas deux.** La BD Forêt classe 34 951 mailles
@@ -253,6 +255,26 @@ vivent dans la table `species`, éditable depuis `/admin/especes`. Les poids son
 
 Contrôle de plausibilité, fin juillet : le cèpe d'été domine, la tête de nègre suit — c'est elle
 qui démarre en août — et toutes les espèces d'automne sont à zéro.
+
+### Le « quand », mesuré
+
+`uv run python -m mycelio.backtest` rejoue la partie temporelle du score — phénologie × météo,
+le calcul exact du cron — sur des observations datées d'iNaturalist et d'Observation.org dans
+le quart sud-ouest, et compare chaque jour de trouvaille aux autres jours de la saison **au même
+endroit**. L'AUC qui en sort est la probabilité qu'un jour de trouvaille batte un jour
+quelconque : 0,5 pour un modèle qui ne sait rien.
+
+En octobre 2026, après trois sorties bredouilles sur des « très bonnes chances » en pleine
+sécheresse, le modèle mesurait **0,58** — 0,54 pour le cèpe d'été. La pluie suivait une cloche
+qui éteignait les grosses pluies, celles qui précèdent justement les poussées, et laissait des
+« bonnes chances » à trois semaines sans une goutte. Corrigé (migration 0029) : **0,68**, et
+0,72 pour le cèpe de Bordeaux. Un jour de trouvaille bat donc un jour quelconque un peu plus de
+deux fois sur trois : c'est mieux, ce n'est pas une certitude.
+
+Deux limites à garder en tête. Ce test ne juge pas le « où » — il faudrait des absences, que
+seul le carnet fournira. Et il sert aussi de garde-fou : tout réglage de `/admin/especes` ou de
+`/admin/scoring` qui fait baisser ce chiffre rend la carte moins juste, quelle que soit
+l'intuition qui l'a motivé.
 
 ### Du score à une phrase
 
