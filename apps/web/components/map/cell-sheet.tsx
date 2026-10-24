@@ -83,6 +83,10 @@ export function CellSheet({
   onExpandedChange: (expanded: boolean) => void;
 }) {
   const [detail, setDetail] = useState<CellDetail | null>(null);
+  // L'index de la maille dont la lecture a échoué. Sans cet état, n'importe quelle erreur — un
+  // 404, une coupure réseau — laissait la fiche sur « Lecture du coin… » pour toujours, ce qui
+  // se lit comme une lenteur et non comme une panne.
+  const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
     // Pas de remise à zéro ici : effacer l'état depuis un effet est un setState synchrone, qui
@@ -90,9 +94,14 @@ export function CellSheet({
     if (!h3) return;
     let cancelled = false;
     fetch(`/api/cell/${h3}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled && !data.error) setDetail(data);
+      .then(async (r) => ({ ok: r.ok, data: await r.json() }))
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (ok && !data.error) setDetail(data);
+        else setFailed(h3);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(h3);
       });
     return () => {
       cancelled = true;
@@ -103,6 +112,7 @@ export function CellSheet({
 
   // L'état de chargement se déduit : le détail affiché correspond-il à la maille demandée ?
   const ready = detail?.cell.h3_index === h3;
+  const broken = !ready && failed === h3;
   const cell = ready ? detail.cell : undefined;
   const advice = ready ? detail.advice : [];
 
@@ -158,7 +168,14 @@ export function CellSheet({
       </div>
 
       <div className="px-4 pb-4 lg:px-4">
-        {!ready ? <p className="text-muted-foreground mt-6 text-sm">Lecture du coin…</p> : null}
+        {broken ? (
+          <p className="text-muted-foreground mt-6 text-sm leading-relaxed">
+            Impossible de lire ce coin pour l&apos;instant. Ferme la fiche et touche à nouveau la
+            maille ; si ça persiste, le réseau est peut-être en cause.
+          </p>
+        ) : !ready ? (
+          <p className="text-muted-foreground mt-6 text-sm">Lecture du coin…</p>
+        ) : null}
 
         {cell ? (
         <>
@@ -349,8 +366,11 @@ function CircleSection({
       </h3>
       {here.length === 0 ? (
         <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">
-          Rien de signalé à moins de quelques kilomètres depuis {circleDays} jours. Ce n&apos;est
-          pas une preuve qu&apos;il n&apos;y a rien : seulement que personne n&apos;en a parlé.
+          {/* Le {" "} est indispensable : sans lui, la compilation mange l'espace qui suit
+              l'expression quand le texte continue sur la ligne d'après — « 14jours », observé. */}
+          Rien de signalé à moins de quelques kilomètres depuis {circleDays}{" "}jours. Ce
+          n&apos;est pas une preuve qu&apos;il n&apos;y a rien : seulement que personne n&apos;en
+          a parlé.
         </p>
       ) : (
         <ul className="mt-2.5 space-y-1.5">

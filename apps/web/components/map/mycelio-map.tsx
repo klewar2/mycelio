@@ -13,6 +13,7 @@ import MapGL, {
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre";
+import { cellToLatLng } from "h3-js";
 import { CircleSlash, MapPin, Sprout } from "lucide-react";
 import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -57,6 +58,15 @@ import { QuickOuting } from "./quick-outing";
  */
 const MAILLES_INTERACTIVES = ["mailles"];
 const AUCUNE_COUCHE_INTERACTIVE: string[] = [];
+
+/** En dessous, une maille de 280 m fait moins d'un pixel : la carte passe aux agrégats r7. */
+const ZOOM_DETAIL = 11;
+
+/**
+ * Zoom auquel on plonge quand on touche un agrégat : les mailles y font une trentaine de
+ * pixels, assez pour viser du doigt. C'est aussi le plafond de la géolocalisation, plus bas.
+ */
+const ZOOM_PLONGEE = 13;
 
 /**
  * Secteurs du cercle : un pointillé par-dessus les mailles, ocre s'il y a eu une trouvaille,
@@ -106,6 +116,10 @@ export function MycelioMap({
   const geolocateRef = useRef<React.ComponentRef<typeof GeolocateControl>>(null);
   const [basemap, setBasemap] = useState<BasemapId>("plan");
   const [cells, setCells] = useState<Cell[]>([]);
+  // Les mailles affichées sont-elles des agrégats r7 ? Lu sur la réponse de l'API, et non sur
+  // le zoom courant : c'est ce que montre la carte qui décide de ce que veut dire un tap, et la
+  // réponse peut avoir un temps de retard sur le zoom.
+  const [aggregated, setAggregated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<{ bbox: [number, number, number, number]; detailed: boolean } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -174,6 +188,7 @@ export function MycelioMap({
         if (cancelled) return;
         const rows = (data.cells ?? []) as (Cell & { s: number[]; c: number })[];
         setCells(rows);
+        setAggregated(data.detailed === false);
         const next = new Map<string, Forecast>();
         for (const row of rows) next.set(row.h, { h: row.h, s: row.s, c: row.c });
         setForecast(next);
@@ -314,7 +329,7 @@ export function MycelioMap({
       // laisse bloquée sur « already running ». La carte s'affiche alors normalement et refuse
       // tout déplacement, sans la moindre erreur en console. C'est le piège décrit plus haut,
       // et il coûte une carte morte en production pour une lecture déplacée de trois lignes.
-      const detailed = map.getZoom() >= 11;
+      const detailed = map.getZoom() >= ZOOM_DETAIL;
       setView((current) => {
         // Identité référentielle : `view` est une dépendance d'effet. Sans cette comparaison,
         // chaque `idle` — il y en a un par inertie de glissement — rendrait un objet neuf et
@@ -378,10 +393,43 @@ export function MycelioMap({
       }
       setSpotId(null);
       const feature = event.features?.[0];
-      setSelected(feature ? (feature.properties?.h as string) : null);
+      const h3 = feature ? (feature.properties?.h as string) : null;
+
+      // Dézoomée, la carte montre des agrégats de 5 km² : il n'existe aucune fiche « Ce coin »
+      // pour eux, et en ouvrir une la laissait figée sur « Lecture du coin… » — l'API répondait
+      // 404 à un index qu'elle ne connaît pas. Toucher un agrégat veut dire « montre-moi ça » :
+      // on plonge dedans, jusqu'aux mailles qu'on peut ouvrir.
+      if (h3 && aggregated) {
+        setSelected(null);
+        const [lat, lng] = cellToLatLng(h3);
+        // En deux temps, glisser PUIS zoomer, et ce n'est pas un effet de style. Le suivi de
+        // position de MapLibre reste verrouillé sur l'utilisateur tant qu'un déplacement
+        // comporte un zoom (`!map.isZooming()` dans GeolocateControl) : un seul `easeTo` qui
+        // centre et zoome le laissait actif, et le relevé GPS suivant ramenait la carte sur
+        // soi — observé en test, une minute après le tap. Le glissement seul le libère.
+        try {
+          const map = mapRef.current?.getMap();
+          if (map) {
+            map.once("moveend", () => {
+              try {
+                map.easeTo({ zoom: Math.max(map.getZoom(), ZOOM_PLONGEE), duration: 500 });
+              } catch {
+                // voir plus bas
+              }
+            });
+            map.easeTo({ center: [lng, lat], duration: 350 });
+          }
+        } catch {
+          // Carte pas encore projetable : le tap est perdu, rien de plus. Jamais laisser
+          // MapLibre lever hors d'une pile qu'on contrôle.
+        }
+        return;
+      }
+
+      setSelected(h3);
       setCellExpanded(false);
     },
-    [pointing],
+    [pointing, aggregated],
   );
 
   /**
@@ -684,7 +732,10 @@ export function MycelioMap({
         />
       ) : null}
 
+      {/* Une fiche neuve par maille : une lecture ratée sur la précédente — ou sur la même,
+          avant qu'on la retouche — ne doit pas s'afficher pendant le nouvel essai. */}
       <CellSheet
+        key={selected ?? ""}
         h3={selected}
         day={day}
         signals={signals}

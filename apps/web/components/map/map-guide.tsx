@@ -86,6 +86,8 @@ export function MapGuide({ trigger }: { trigger: React.ReactNode }) {
             <p className="text-muted-foreground mt-1.5 text-xs">
               Toucher un hexagone ouvre sa fiche : ce qu&apos;on peut y espérer, où chercher sur
               place, et la description du terrain — essence des arbres, pente, humidité, sol.
+              Quand la carte est dézoomée, les hexagones regroupent plusieurs coins : en toucher
+              un zoome dessus, et il suffit alors de toucher le coin qui t&apos;intéresse.
             </p>
           </section>
 
