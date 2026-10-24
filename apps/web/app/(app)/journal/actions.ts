@@ -7,6 +7,14 @@ import { humanizeDbError } from "@/lib/auth/errors";
 
 export type ActionState = { error: string | null; success: string | null };
 
+const VISIBILITIES = ["private", "signal", "shared"] as const;
+type Visibility = (typeof VISIBILITIES)[number];
+
+/** Tout ce qui n'est pas reconnu retombe sur « privée » : on ne partage jamais par défaut. */
+function visibilityOf(value: FormDataEntryValue | null): Visibility {
+  return VISIBILITIES.find((v) => v === value) ?? "private";
+}
+
 function coord(value: FormDataEntryValue | null): number | null {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -49,7 +57,7 @@ export async function saveOuting(_prev: ActionState, formData: FormData): Promis
       duration_min: duration,
       found_nothing: foundNothing,
       notes,
-      visibility: formData.get("visibility") === "shared" ? "shared" : "private",
+      visibility: visibilityOf(formData.get("visibility")),
     })
     .select("id")
     .single();
@@ -79,9 +87,12 @@ export async function saveOuting(_prev: ActionState, formData: FormData): Promis
 
   revalidatePath("/journal");
   revalidatePath("/carte");
+  const signaled = visibilityOf(formData.get("visibility")) !== "private";
   return {
     error: null,
-    success: foundNothing ? "Sortie bredouille enregistrée." : "Sortie enregistrée.",
+    success:
+      (foundNothing ? "Sortie bredouille enregistrée" : "Sortie enregistrée") +
+      (signaled ? ", et signalée au cercle." : "."),
   };
 }
 
@@ -98,28 +109,31 @@ export async function deleteOuting(_prev: ActionState, formData: FormData): Prom
   if (error) return { error: humanizeDbError(error.message), success: null };
 
   revalidatePath("/journal");
+  revalidatePath("/carte");
   return { error: null, success: "Sortie supprimée." };
 }
 
-export async function toggleVisibility(
+const VISIBILITY_MESSAGES: Record<Visibility, string> = {
+  private: "Sortie redevenue privée.",
+  signal: "Sortie signalée au cercle : il voit le secteur, pas le coin.",
+  shared: "Sortie partagée avec le cercle, en entier.",
+};
+
+export async function setVisibility(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   await requirePermission("finds.create");
   const id = String(formData.get("id") ?? "");
-  const shared = formData.get("shared") === "true";
+  const visibility = visibilityOf(formData.get("visibility"));
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("outings")
-    .update({ visibility: shared ? "shared" : "private" })
-    .eq("id", id);
+  const { error } = await supabase.from("outings").update({ visibility }).eq("id", id);
 
   if (error) return { error: humanizeDbError(error.message), success: null };
 
   revalidatePath("/journal");
-  return {
-    error: null,
-    success: shared ? "Sortie partagée avec le cercle." : "Sortie redevenue privée.",
-  };
+  // Les signaux de la carte en dépendent : une sortie rendue privée doit en disparaître.
+  revalidatePath("/carte");
+  return { error: null, success: VISIBILITY_MESSAGES[visibility] };
 }

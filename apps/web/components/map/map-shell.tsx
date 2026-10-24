@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 
+import type { Signal } from "@/lib/map/circle";
 import type { Species } from "@/lib/map/families";
 import type { Spot } from "@/lib/map/spots";
 
@@ -36,6 +37,8 @@ export function MapShell(props: {
   species: Species[];
   spots: Spot[];
   canManageSpots: boolean;
+  signals: Signal[];
+  circleDays: number;
 }) {
   return <MycelioMap {...props} />;
 }

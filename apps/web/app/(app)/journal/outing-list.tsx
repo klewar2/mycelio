@@ -1,8 +1,16 @@
 "use client";
 
-import { CircleSlash, Share2, Trash2 } from "lucide-react";
+import { CircleSlash, Lock, Radio, Share2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +23,29 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useServerAction } from "@/lib/use-server-action";
-import { deleteOuting, toggleVisibility } from "./actions";
+import { deleteOuting, setVisibility } from "./actions";
+
+/**
+ * Les trois niveaux, du plus discret au plus ouvert, dits comme on les expliquerait.
+ *
+ * Le niveau intermédiaire est celui qui compte : il dit au cercle « ça sort par là » sans livrer
+ * le coin, et c'est lui qui alimente les trouvailles affichées sur la carte. Le partage entier
+ * reste possible, mais plus personne n'a à choisir entre tout montrer et ne rien dire.
+ */
+const VISIBILITY = {
+  private: { icon: Lock, label: "Privée", hint: "Personne d'autre ne la voit." },
+  signal: {
+    icon: Radio,
+    label: "Signalée au cercle",
+    hint: "Le cercle voit la date, l'espèce et un secteur de 7 km. Jamais le coin.",
+  },
+  shared: {
+    icon: Share2,
+    label: "Partagée en entier",
+    hint: "Le cercle voit la sortie dans son journal : maille, notes, quantités.",
+  },
+} as const;
+type Visibility = keyof typeof VISIBILITY;
 
 type Outing = {
   id: string;
@@ -39,7 +69,7 @@ export function OutingList({
   speciesById: Record<number, string>;
 }) {
   const { run: remove } = useServerAction(deleteOuting);
-  const { run: share } = useServerAction(toggleVisibility);
+  const { run: share } = useServerAction(setVisibility);
 
   return (
     <ul className="space-y-3">
@@ -68,6 +98,11 @@ export function OutingList({
                     <Badge variant="outline" className="gap-1">
                       <Share2 className="size-3" aria-hidden />
                       partagée
+                    </Badge>
+                  ) : outing.visibility === "signal" ? (
+                    <Badge variant="outline" className="gap-1">
+                      <Radio className="size-3" aria-hidden />
+                      signalée
                     </Badge>
                   ) : null}
                   {!mine ? <Badge variant="outline">du cercle</Badge> : null}
@@ -100,28 +135,15 @@ export function OutingList({
 
               {mine ? (
                 <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={
-                      outing.visibility === "shared"
-                        ? "Rendre cette sortie privée"
-                        : "Partager cette sortie avec le cercle"
-                    }
-                    onClick={() => {
+                  <VisibilityMenu
+                    value={outing.visibility as Visibility}
+                    onChange={(visibility) => {
                       const fd = new FormData();
                       fd.set("id", outing.id);
-                      fd.set("shared", String(outing.visibility !== "shared"));
+                      fd.set("visibility", visibility);
                       share(fd);
                     }}
-                  >
-                    <Share2
-                      className="size-4"
-                      style={
-                        outing.visibility === "shared" ? { color: "var(--primary)" } : undefined
-                      }
-                    />
-                  </Button>
+                  />
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -158,5 +180,46 @@ export function OutingList({
         );
       })}
     </ul>
+  );
+}
+
+function VisibilityMenu({
+  value,
+  onChange,
+}: {
+  value: Visibility;
+  onChange: (visibility: Visibility) => void;
+}) {
+  const current = VISIBILITY[value] ?? VISIBILITY.private;
+  const Icon = current.icon;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={`Visibilité : ${current.label}`}>
+          <Icon
+            className="size-4"
+            style={value !== "private" ? { color: "var(--primary)" } : undefined}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel>Qui voit cette sortie ?</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(next) => {
+            if (next !== value) onChange(next as Visibility);
+          }}
+        >
+          {(Object.keys(VISIBILITY) as Visibility[]).map((key) => (
+            <DropdownMenuRadioItem key={key} value={key} className="items-start py-2">
+              <span>
+                <span className="block text-sm">{VISIBILITY[key].label}</span>
+                <span className="text-muted-foreground block text-xs">{VISIBILITY[key].hint}</span>
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

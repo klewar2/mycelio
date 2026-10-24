@@ -69,6 +69,19 @@ export function MapGuide({ trigger }: { trigger: React.ReactNode }) {
           </section>
 
           <section>
+            <h3 className="text-foreground font-medium">Le cercle</h3>
+            <p className="text-muted-foreground mt-1.5 text-xs">
+              Les secteurs en pointillé sont ceux où quelqu&apos;un du cercle est allé ces derniers
+              jours : ocre s&apos;il a trouvé, vert de gris s&apos;il est rentré bredouille.
+              C&apos;est la seule chose sur la carte qui ne vient pas d&apos;un calcul, mais de
+              champignons vraiment vus. Le secteur fait environ 7 km de large : il dit « ça sort
+              par là », jamais où. Pour signaler les tiennes, coche{" "}
+              <strong className="text-foreground font-medium">Prévenir le cercle</strong> en
+              enregistrant une sortie avec le bouton +.
+            </p>
+          </section>
+
+          <section>
             <h3 className="text-foreground font-medium">Un coin en particulier</h3>
             <p className="text-muted-foreground mt-1.5 text-xs">
               Toucher un hexagone ouvre sa fiche : ce qu&apos;on peut y espérer, où chercher sur

@@ -25,6 +25,7 @@ le filtrage GBIF en CC-BY-NC.
 | 6 | Carnet de sorties, export GPX | ✅ |
 | 6 bis | Lecture grand public : familles, échelle en toutes lettres, barre de semaine | ✅ |
 | 6 ter | Spots personnels, relevé de coordonnées pour un GPS | ✅ |
+| 6 quater | Trouvailles du cercle : sorties signalées, secteur flouté | ✅ |
 | 7 | LightGBM, validation spatiale | après une saison de terrain |
 
 **Chiffres actuels** — 86 137 mailles H3 en résolution 9 (~280 m de largeur), 8 espèces
@@ -298,6 +299,31 @@ le premier réglage à revoir après une saison, avec les poids de `/admin/scori
 
 Formulation en **chances** et non en probabilité : c'est vrai, et c'est ce que l'on dit à l'oral.
 
+### Les trouvailles du cercle
+
+La carte dit où les conditions sont réunies, jamais si des champignons sont sortis. Les bases
+publiques ne le savent pas non plus — aucun cèpe de Bordeaux sur iNaturalist dans les trois
+départements entre septembre et fin octobre 2026. Ceux qui le savent, ce sont ceux qui en
+reviennent : la carte affiche donc les sorties que le cercle a choisi de **signaler**.
+
+Une sortie a trois niveaux de visibilité :
+
+| Niveau | Ce que voit le cercle |
+|---|---|
+| `private` | rien |
+| `signal` | une date, l'espèce, trouvé ou bredouille, et un **secteur** H3 de résolution 6 — 36 km², 7 km de large |
+| `shared` | la sortie entière dans son journal : maille, notes, quantités |
+
+Le niveau intermédiaire est celui qui compte. Le partage n'existait qu'en tout ou rien, et
+personne ne livre un coin à cèpes pour dire que ça sort. Les bredouilles sont signalées au même
+titre que les trouvailles : « trois sorties vides dans ce secteur cette semaine » est
+exactement ce qu'aucun modèle ne sait dire.
+
+Sur la carte : un pointillé ocre autour d'un secteur où l'on a trouvé, vert de gris s'il n'y a
+eu que des bredouilles, une étiquette « Cèpes · 2 j », une phrase dans le panneau de lecture et
+un bloc dans la fiche d'une maille. Fraîcheur et finesse du secteur se règlent dans
+`/admin/parametres` (`map.circle_days`, `map.circle_resolution`).
+
 ### Familles
 
 Un débutant ne distingue pas un cèpe d'été d'un cèpe de Bordeaux, et n'a pas à le faire pour
@@ -455,6 +481,13 @@ que la mémoïsation des expressions de peinture, quelques lignes plus bas dans 
 en React, une valeur reconstruite à l'identique n'est pas la même valeur, et sur une carte cela
 se paie en requêtes ou en silence.
 
+**17. Une sortie `signal` ne sort de la base que par `circle_signals()`.** Les politiques RLS de
+`outings` et de `finds` n'ouvrent aux autres que `shared`, et c'est délibéré : une sortie
+signalée reste illisible par PostgREST, même demandée à la main, et seule la fonction en extrait
+quelque chose — au secteur près, sans maille, sans note, sans nom. Élargir la politique de
+lecture pour « simplifier » une requête du journal livrerait d'un coup tous les coins de ceux
+qui ont cru ne dire que « ça sort ». Le test pgTAP 10 le vérifie.
+
 Le reste des pièges est documenté à l'endroit du code concerné.
 
 ---
@@ -462,12 +495,12 @@ Le reste des pièges est documenté à l'endroit du code concerné.
 ## Tests et CI
 
 - **Tests pgTAP** (`pnpm db:test`) : invariants de rôles, RLS de toutes les tables, immuabilité
-  du journal d'audit, confidentialité du carnet et des spots. Le fichier `01_rls_enabled.sql` vérifie par
+  du journal d'audit, confidentialité du carnet, des spots et des sorties signalées. Le fichier `01_rls_enabled.sql` vérifie par
   introspection que **toute** table de `public` est sous RLS — une table ajoutée sans politique
   fait échouer la CI.
-- **Tests unitaires Vitest** sur `can()`, l'arrondi d'emprise (`snapBounds`) et l'analyse des
-  coordonnées collées (`parseCoords`) — trois fonctions pures dont une erreur ne se verrait
-  nulle part ailleurs.
+- **Tests unitaires Vitest** sur `can()`, l'arrondi d'emprise (`snapBounds`), l'analyse des
+  coordonnées collées (`parseCoords`) et les phrases du cercle (`lib/map/circle.ts`) — des
+  fonctions pures dont une erreur ne se verrait nulle part ailleurs.
 - **CI GitHub Actions** : migrations, pgTAP, dérive des types générés, `tsc`, `eslint`,
   `vitest`, `next build`.
 - **Scoring quotidien** à 5 h UTC (`daily-score.yml`), actif dès que le dépôt est sur GitHub avec

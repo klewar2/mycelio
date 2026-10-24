@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, TriangleAlert, X } from "lucide-react";
+import { ChevronLeft, CircleSlash, Sprout, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TerrainCore } from "./terrain-core";
 import { aspectLabel, topographicPosition } from "@/lib/terrain/advice";
 import { LEVELS, dayLabel, levelIndex, levelOf } from "@/lib/scoring/levels";
 import { CELL_SHEET_HEIGHTS, MOBILE_NAV_CLEARANCE } from "@/lib/map/sheet";
+import { daysAgo, listFamilies, whenLabel, zoneOf, type Signal } from "@/lib/map/circle";
 
 type FamilyDetail = {
   label: string;
@@ -62,12 +63,20 @@ type CellDetail = {
 export function CellSheet({
   h3,
   day,
+  signals,
+  labels,
+  circleDays,
   onClose,
   expanded,
   onExpandedChange,
 }: {
   h3: string | null;
   day: number;
+  /** Tous les signaux du cercle, toutes familles : la fiche montre ce qui a été vu ici. */
+  signals: Signal[];
+  /** Libellé de famille par espèce. */
+  labels: Map<number, string>;
+  circleDays: number;
   onClose: () => void;
   /** Mi-hauteur ou plein écran, sur mobile — possédé par le parent pour la position du FAB. */
   expanded: boolean;
@@ -179,6 +188,12 @@ export function CellSheet({
               </p>
             )}
           </section>
+
+          {/* ---------- Bloc 1 bis : ce que le cercle a vu ----------
+              Juste après le verdict : c'est l'autre moitié de la réponse à « ça vaut le
+              coup ? ». Le verdict dit si les conditions y sont, le cercle si des champignons
+              ont réellement été vus dans le secteur. */}
+          <CircleSection h3={h3} signals={signals} labels={labels} circleDays={circleDays} />
 
           {/* ---------- Bloc 2 : ce qu'on peut espérer ---------- */}
           {families.length > 0 ? (
@@ -313,6 +328,64 @@ export function CellSheet({
  * Cinq segments plutôt qu'une barre continue : le lecteur voit qu'il existe cinq niveaux, donc
  * où se situe celui-ci, ce qu'une barre remplie à 40 % ne dit pas.
  */
+function CircleSection({
+  h3,
+  signals,
+  labels,
+  circleDays,
+}: {
+  h3: string;
+  signals: Signal[];
+  labels: Map<number, string>;
+  circleDays: number;
+}) {
+  const zone = zoneOf(h3, signals);
+  const here = zone ? signals.filter((s) => s.zone === zone) : [];
+
+  return (
+    <section className="border-border mt-5 border-t pt-4">
+      <h3 className="text-muted-foreground text-[0.6875rem] font-semibold tracking-[0.14em] uppercase">
+        Le cercle dans ce secteur
+      </h3>
+      {here.length === 0 ? (
+        <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">
+          Rien de signalé à moins de quelques kilomètres depuis {circleDays} jours. Ce n&apos;est
+          pas une preuve qu&apos;il n&apos;y a rien : seulement que personne n&apos;en a parlé.
+        </p>
+      ) : (
+        <ul className="mt-2.5 space-y-1.5">
+          {here.slice(0, 6).map((signal, index) => {
+            const Icon = signal.found ? Sprout : CircleSlash;
+            // Sans verbe, pour ne pas avoir à accorder « trouvé » avec des girolles ou des
+            // cèpes : « hier — des cèpes », « dimanche — bredouille ».
+            const what = signal.found
+              ? listFamilies([
+                  ...new Set(signal.species_ids.map((id) => labels.get(id) ?? "champignons")),
+                ])
+              : "bredouille";
+            return (
+              <li key={`${signal.occurred_on}-${index}`} className="flex items-start gap-2 text-xs">
+                <Icon
+                  className="mt-px size-3.5 shrink-0"
+                  style={signal.found ? { color: "var(--primary)" } : undefined}
+                  aria-hidden
+                />
+                <span className="text-foreground">
+                  <span className="first-letter:uppercase inline-block">
+                    {whenLabel(daysAgo(signal.occurred_on))}
+                  </span>{" "}
+                  — {what}
+                  {signal.mine ? <span className="text-muted-foreground"> (toi)</span> : null}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function LevelBar({ score, className }: { score: number; className?: string }) {
   const index = levelIndex(score);
   return (

@@ -18,8 +18,11 @@
  */
 export const MOBILE_NAV_CLEARANCE = "calc(5.5rem + env(safe-area-inset-bottom))";
 
-/** Repliée : juste le verdict. Par défaut : verdict, familles, semaine. Dépliée : détail jour par jour. */
-export const READING_SHEET_HEIGHTS = ["7rem", "17rem", "min(70dvh, 38rem)"] as const;
+/**
+ * Repliée : juste le verdict. Par défaut : verdict, familles, semaine, et la ligne du cercle.
+ * Dépliée : détail jour par jour.
+ */
+export const READING_SHEET_HEIGHTS = ["7rem", "19rem", "min(70dvh, 38rem)"] as const;
 
 /** Mi-hauteur : la carte reste visible derrière. Pleine hauteur : lecture complète du coin. */
 export const CELL_SHEET_HEIGHTS = ["44dvh", "76dvh"] as const;

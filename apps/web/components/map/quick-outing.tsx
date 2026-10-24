@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { CircleSlash, Plus, Sprout } from "lucide-react";
+import { CircleSlash, Plus, Radio, Sprout } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,30 @@ import {
 import { useServerAction } from "@/lib/use-server-action";
 import { saveOuting } from "@/app/(app)/journal/actions";
 import { groupByFamily, type Species } from "@/lib/map/families";
+
+/**
+ * Le choix « Prévenir le cercle » est retenu sur l'appareil : qui signale ses sorties veut
+ * presque toujours les signaler toutes, et le redemander à chaque fois coûterait le geste qu'on
+ * cherche à garder court. Simple confort — sans stockage, la case repart décochée, ce qui est le
+ * bon défaut : on ne partage jamais sans l'avoir choisi.
+ */
+const SIGNAL_KEY = "mycelio.signaler-au-cercle";
+
+function readSignalPreference(): boolean {
+  try {
+    return window.localStorage.getItem(SIGNAL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSignalPreference(value: boolean) {
+  try {
+    window.localStorage.setItem(SIGNAL_KEY, value ? "1" : "0");
+  } catch {
+    // navigation privée, stockage bloqué : le choix vaut pour cette sortie, c'est tout
+  }
+}
 
 /**
  * Enregistrement rapide d'une sortie depuis la carte.
@@ -46,6 +71,15 @@ export function QuickOuting({
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"choix" | "trouvaille">("choix");
+  // Initialisé paresseusement : ce composant n'est rendu que côté navigateur (la carte entière
+  // l'est, voir map-shell), donc `window` existe au premier rendu.
+  const [signal, setSignal] = useState(readSignalPreference);
+  const visibility = signal ? "signal" : "private";
+
+  const chooseSignal = useCallback((next: boolean) => {
+    setSignal(next);
+    writeSignalPreference(next);
+  }, []);
 
   // Groupé par famille, comme la carte : on cherche d'abord « cèpes », et l'espèce précise
   // n'apparaît qu'en dessous. C'est le seul endroit de l'application où elle est demandée, et
@@ -69,6 +103,7 @@ export function QuickOuting({
       <input type="hidden" name="h3_index" value={h3 ?? ""} />
       <input type="hidden" name="lat" value={position?.lat ?? ""} />
       <input type="hidden" name="lng" value={position?.lng ?? ""} />
+      <input type="hidden" name="visibility" value={visibility} />
     </>
   );
 
@@ -76,6 +111,7 @@ export function QuickOuting({
     const fd = new FormData();
     fd.set("found_nothing", "true");
     fd.set("occurred_on", today);
+    fd.set("visibility", visibility);
     if (h3) fd.set("h3_index", h3);
     if (position) {
       fd.set("lat", String(position.lat));
@@ -148,6 +184,11 @@ export function QuickOuting({
                   </span>
                 </Button>
               </div>
+
+              {/* Avant les deux boutons dans l'ordre de lecture du geste, mais posé dessous :
+                  « Rien trouvé » enregistre au premier tap, le choix doit donc déjà être fait —
+                  et il l'est, puisqu'il est retenu d'une sortie à l'autre. */}
+              <SignalToggle checked={signal} onChange={chooseSignal} />
             </>
           ) : (
             <form action={run}>
@@ -214,7 +255,9 @@ export function QuickOuting({
                 </div>
               </div>
 
-              <Button type="submit" disabled={pending} className="w-full">
+              <SignalToggle checked={signal} onChange={chooseSignal} />
+
+              <Button type="submit" disabled={pending} className="mt-4 w-full">
                 {pending ? "Enregistrement…" : "Enregistrer"}
               </Button>
             </form>
@@ -222,5 +265,27 @@ export function QuickOuting({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function SignalToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="border-border flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+      <Radio className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="text-foreground block text-sm">Prévenir le cercle</span>
+        <span className="text-muted-foreground block text-xs leading-relaxed">
+          Il verra la date, l&apos;espèce et un secteur d&apos;environ 7 km. Jamais ton coin, ni
+          tes notes.
+        </span>
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5" />
+    </label>
   );
 }

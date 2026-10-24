@@ -685,6 +685,16 @@ export type Database = {
           n: number
         }[]
       }
+      circle_signals: {
+        Args: never
+        Returns: {
+          found: boolean
+          mine: boolean
+          occurred_on: string
+          species_ids: number[]
+          zone: string
+        }[]
+      }
       forecast_in_view: {
         Args: {
           detailed?: boolean
@@ -700,6 +710,7 @@ export type Database = {
           s: number[]
         }[]
       }
+      h3_parent: { Args: { cell: string; res: number }; Returns: string }
       is_active_user: { Args: never; Returns: boolean }
       map_in_view: {
         Args: {

@@ -13,11 +13,21 @@ import MapGL, {
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre";
-import { MapPin } from "lucide-react";
+import { CircleSlash, MapPin, Sprout } from "lucide-react";
 import { toast } from "sonner";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
+import {
+  circleSentence,
+  familyLabels,
+  forFamily,
+  summarize,
+  whenShort,
+  zonesGeoJSON,
+  type Signal,
+  type ZoneSummary,
+} from "@/lib/map/circle";
 import type { Coords } from "@/lib/map/coordinates";
 import { ALL_FAMILIES, groupByFamily, slugsFor, type Species } from "@/lib/map/families";
 import { HORIZON, snapBounds, toGeoJSON, type Cell, type Forecast } from "@/lib/map/hexagons";
@@ -48,6 +58,24 @@ import { QuickOuting } from "./quick-outing";
 const MAILLES_INTERACTIVES = ["mailles"];
 const AUCUNE_COUCHE_INTERACTIVE: string[] = [];
 
+/**
+ * Secteurs du cercle : un pointillé par-dessus les mailles, ocre s'il y a eu une trouvaille,
+ * vert de gris s'il n'y a eu que des bredouilles. Un contour et un voile presque transparent,
+ * jamais un aplat : la couleur des mailles reste celle du score, et les deux lectures ne
+ * doivent pas se mélanger. Constantes hors du composant, pour la raison dite plus haut.
+ */
+const CERCLE_COULEUR = ["case", ["==", ["get", "found"], 1], "#C89B3C", "#9FB08A"];
+const CERCLE_FOND = { "fill-color": CERCLE_COULEUR, "fill-opacity": 0.07 };
+const CERCLE_CONTOUR = {
+  "line-color": CERCLE_COULEUR,
+  "line-width": 1.75,
+  "line-dasharray": [2, 1.5],
+};
+
+function inBox([lng, lat]: [number, number], [w, s, e, n]: [number, number, number, number]) {
+  return lng >= w && lng <= e && lat >= s && lat <= n;
+}
+
 type Props = {
   center: [number, number];
   zoom: number;
@@ -57,6 +85,10 @@ type Props = {
   /** Les spots de l'utilisateur. Rendus côté serveur, donc posés dès le premier rendu. */
   spots: Spot[];
   canManageSpots: boolean;
+  /** Trouvailles du cercle, déjà floutées au secteur par la base. */
+  signals: Signal[];
+  /** Fenêtre de fraîcheur des signaux, pour dire « rien depuis 14 jours ». */
+  circleDays: number;
 };
 
 export function MycelioMap({
@@ -66,6 +98,8 @@ export function MycelioMap({
   species,
   spots,
   canManageSpots,
+  signals,
+  circleDays,
 }: Props) {
   const mapRef = useRef<MapRef>(null);
   // Le type de l'instance n'est pas ré-exporté par la bibliothèque : on le dérive.
@@ -107,6 +141,17 @@ export function MycelioMap({
    * espèce ait changé. Sur la chaîne, il ne repart que si la sélection change vraiment.
    */
   const speciesParam = useMemo(() => slugs.join(","), [slugs]);
+
+  /**
+   * Le cercle, filtré sur la famille choisie : des girolles ne disent pas que les cèpes sont
+   * sortis, mais une bredouille compte pour toutes (voir lib/map/circle.ts).
+   */
+  const labels = useMemo(() => familyLabels(families), [families]);
+  const circleZones = useMemo(
+    () => summarize(forFamily(signals, families, chosen), labels),
+    [signals, families, chosen, labels],
+  );
+  const circleGeoJSON = useMemo(() => zonesGeoJSON(circleZones), [circleZones]);
 
   /**
    * Mailles et scores, en un seul appel.
@@ -222,6 +267,17 @@ export function MycelioMap({
   }, [visible, forecast, day]);
 
   const style = useMemo(() => buildStyle(basemap), [basemap]);
+
+  // « Par ici » : les secteurs dont le centre est dans l'emprise chargée — la même que celle
+  // du verdict, pour que la phrase du cercle parle de ce que le panneau juge.
+  const circleText = useMemo(
+    () =>
+      circleSentence(
+        view ? circleZones.filter((zone) => inBox(zone.center, view.bbox)) : [],
+        circleDays,
+      ),
+    [circleZones, view, circleDays],
+  );
 
   /**
    * Relève l'emprise visible, pour reclasser les couleurs.
@@ -515,6 +571,31 @@ export function MycelioMap({
           />
         </Source>
 
+        <Source id="cercle" type="geojson" data={circleGeoJSON}>
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          <Layer id="cercle-fond" type="fill" paint={CERCLE_FOND as any} />
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          <Layer id="cercle-contour" type="line" paint={CERCLE_CONTOUR as any} />
+        </Source>
+
+        {/* Une étiquette par secteur : ce qui a été trouvé, et quand. Le détail tient dans une
+            phrase, montrée au toucher plutôt qu'écrite sur la carte — à 36 km² le secteur, il
+            n'y en a jamais qu'une poignée à l'écran. */}
+        {circleZones.map((zone) => (
+          <Marker
+            key={zone.zone}
+            longitude={zone.center[0]}
+            latitude={zone.center[1]}
+            anchor="center"
+            onClick={(event) => {
+              event.originalEvent?.stopPropagation();
+              toast(circleSentence([zone], circleDays));
+            }}
+          >
+            <CircleBadge zone={zone} />
+          </Marker>
+        ))}
+
         {/* Marqueurs DOM plutôt qu'une couche symbole : quelques dizaines de spots au maximum,
             aucune image à charger dans le style, et un habillage qui suit les couleurs du
             thème. Une couche symbole se justifierait à partir de quelques milliers de points —
@@ -559,6 +640,7 @@ export function MycelioMap({
         hasData={forecast.size > 0}
         loading={loading}
         weather={weather}
+        circle={circleText}
         hidden={!!selected || pointSheetOpen}
         snap={sheetSnap}
         onSnapChange={setSheetSnap}
@@ -605,10 +687,39 @@ export function MycelioMap({
       <CellSheet
         h3={selected}
         day={day}
+        signals={signals}
+        labels={labels}
+        circleDays={circleDays}
         onClose={closeCell}
         expanded={cellExpanded}
         onExpandedChange={setCellExpanded}
       />
     </div>
+  );
+}
+
+/** L'étiquette d'un secteur : une pousse et l'âge de la trouvaille, ou un cercle barré. */
+function CircleBadge({ zone }: { zone: ZoneSummary }) {
+  const found = zone.lastFind != null;
+  const Icon = found ? Sprout : CircleSlash;
+  const label = found
+    ? `${zone.found[0] ?? "Champignons"} · ${whenShort(zone.lastFind!)}`
+    : `Rien · ${whenShort(zone.lastEmpty ?? 0)}`;
+  return (
+    <button
+      type="button"
+      className={cn(
+        "surface-float flex cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-[0.6875rem] font-medium shadow-md",
+        found ? "text-foreground" : "text-muted-foreground",
+      )}
+      aria-label={label}
+    >
+      <Icon
+        className="size-3.5"
+        style={found ? { color: "var(--primary)" } : undefined}
+        aria-hidden
+      />
+      {label}
+    </button>
   );
 }

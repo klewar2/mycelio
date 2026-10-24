@@ -23,11 +23,11 @@ export default async function CartePage() {
   // deux allers-retours en série avant le premier hexagone. Les deux requêtes ci-dessous, elles,
   // partent ensemble.
   const supabase = await createClient();
-  const [settings, speciesRows, spots] = await Promise.all([
+  const [settings, speciesRows, spots, signals] = await Promise.all([
     supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["map.default_center", "map.default_zoom", "map.opacity_range"]),
+      .in("key", ["map.default_center", "map.default_zoom", "map.opacity_range", "map.circle_days"]),
     supabase
       .from("species")
       .select("id, slug, common_name_fr, scientific_name, family, notes_terrain")
@@ -41,6 +41,10 @@ export default async function CartePage() {
       .from("spots")
       .select("id, label, notes, lat, lng")
       .order("created_at", { ascending: false }),
+    // Les trouvailles du cercle, déjà floutées par la base au secteur : la fonction ne rend
+    // jamais une maille ni une note (migration 0030). Quelques dizaines de lignes au plus, et
+    // elles ne changent qu'à l'enregistrement d'une sortie — qui revalide cette page.
+    supabase.rpc("circle_signals"),
   ]);
 
   const rows = settings.data ?? [];
@@ -53,6 +57,8 @@ export default async function CartePage() {
       species={speciesRows.data ?? []}
       spots={spots.data ?? []}
       canManageSpots={can(ctx, "spots.manage")}
+      signals={signals.data ?? []}
+      circleDays={readSetting<number>(rows, "map.circle_days", 14)}
     />
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Cloud, CloudRain, HelpCircle, Sun } from "lucide-react";
+import { Cloud, CloudRain, HelpCircle, Radio, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ALL_FAMILIES, type Family } from "@/lib/map/families";
 import { LEVELS, RAMP, dayLabel, dayShort, levelIndex, levelOf, levelPosition } from "@/lib/scoring/levels";
@@ -33,6 +33,7 @@ export function ReadingPanel({
   hasData,
   loading,
   weather,
+  circle,
   hidden,
   snap,
   onSnapChange,
@@ -48,6 +49,8 @@ export function ReadingPanel({
   loading: boolean;
   /** Série météo de la fenêtre visible, ou `null` tant qu'elle n'a pas encore chargé. */
   weather: WeatherSeries | null;
+  /** Ce que le cercle a trouvé par ici, en une phrase (voir lib/map/circle.ts). */
+  circle: string;
   /** Masqué le temps qu'une fiche « Ce coin » occupe le bas de l'écran, sur mobile. */
   hidden?: boolean;
   /** Cran courant (0 replié, 1 par défaut, 2 déplié) — possédé par le parent, qui en tire
@@ -174,6 +177,8 @@ export function ReadingPanel({
             weather={weather}
           />
 
+          <CircleLine text={circle} />
+
           {snap === 2 ? <WeekDetail weekBest={weekBest} day={day} onDayChange={onDayChange} weather={weather} /> : null}
         </div>
       </div>
@@ -222,8 +227,25 @@ export function ReadingPanel({
           hasData={hasData}
           weather={weather}
         />
+
+        <CircleLine text={circle} />
       </div>
     </div>
+  );
+}
+
+/**
+ * La seule ligne du panneau qui ne vient pas du modèle : ce que des gens ont réellement trouvé.
+ * Sous la semaine, et non dans le verdict — les deux ne disent pas la même chose, et un
+ * débutant doit pouvoir les distinguer d'un coup d'œil : la carte juge des conditions, le
+ * cercle rapporte des champignons.
+ */
+function CircleLine({ text }: { text: string }) {
+  return (
+    <p className="text-muted-foreground mt-2.5 flex items-start gap-1.5 text-xs leading-snug">
+      <Radio className="mt-px size-3.5 shrink-0" style={{ color: "var(--primary)" }} aria-hidden />
+      <span>{text}</span>
+    </p>
   );
 }
 
