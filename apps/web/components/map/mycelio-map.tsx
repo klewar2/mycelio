@@ -16,6 +16,7 @@ import MapGL, {
 import { cellToLatLng } from "h3-js";
 import { CircleSlash, MapPin, Sprout } from "lucide-react";
 import { toast } from "sonner";
+import { setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { buildStyle, type BasemapId } from "@/lib/map/basemaps";
@@ -47,6 +48,12 @@ import { MapControls } from "./map-controls";
 import { CellSheet } from "./cell-sheet";
 import { PointSheet } from "./point-sheet";
 import { QuickOuting } from "./quick-outing";
+
+/**
+ * MapLibre 6 cherche son worker à côté de son propre module ; une fois empaqueté par Next, ce
+ * fichier n'y est plus. On lui donne l'URL de l'asset que le bundler émet.
+ */
+setWorkerUrl(new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).href);
 
 /**
  * Identités stables, hors du composant.
