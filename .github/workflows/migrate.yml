@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Sur `workflow_run`, le checkout par défaut prend la tête de la branche, qui peut
           # avoir avancé depuis. On applique les migrations du commit qui a été testé.
