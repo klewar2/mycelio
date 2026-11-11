@@ -16,7 +16,7 @@
     "test": "pnpm --filter web test"
   },
   "devDependencies": {
-    "supabase": "^2.110.0"
+    "supabase": "^3.0.0"
   },
   "packageManager": "pnpm@10.28.2",
   "engines": {
